@@ -1,0 +1,3089 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Tutorial - Kanban com SQL Puro</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #121212;
+      --bg-surface:  #1c1c1c;
+      --bg-elevated: #232323;
+      --border:      #333333;
+      --text:        #e8e8e8;
+      --text-muted:  #999999;
+      --accent:      #ff9500;
+      --accent-dark: #cc7700;
+      --accent-bg:   #2a1f0f;
+      --code-bg:     #1a1a1a;
+      --code-fg:     #d4d4d4;
+      --green:       #4caf50;
+      --green-bg:    #14241a;
+      --red:         #e85b5b;
+      --red-bg:      #2a1414;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 56px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      z-index: 200;
+    }
+    .menu-btn {
+      width: 36px; height: 36px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .menu-btn:active { background: var(--bg-elevated); }
+    .topbar-title { font-size: 14px; font-weight: 600; color: var(--text); }
+    .topbar-title span { color: var(--accent); }
+
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.6);
+      z-index: 250;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s;
+    }
+    .overlay.show { opacity: 1; pointer-events: auto; }
+
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      width: 280px;
+      max-width: 82vw;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      z-index: 300;
+      transform: translateX(-100%);
+      transition: transform .25s ease;
+      overflow-y: auto;
+      padding: 20px 0 40px;
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    .sidebar-header {
+      padding: 0 20px 16px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .sidebar-header strong { color: var(--accent); font-size: 15px; }
+    .sidebar-header p { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+    .nav-section {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--text-muted);
+      padding: 14px 20px 6px;
+    }
+    .sidebar a {
+      display: block;
+      padding: 8px 20px;
+      font-size: 13.5px;
+      color: var(--text);
+      text-decoration: none;
+      border-left: 3px solid transparent;
+    }
+    .sidebar a:active, .sidebar a.active {
+      background: var(--accent-bg);
+      border-left-color: var(--accent);
+      color: var(--accent);
+    }
+
+    main {
+      margin-top: 56px;
+      padding: 28px 20px 80px;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    h1 {
+      font-size: 22px;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .etapa-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-bg);
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+      letter-spacing: .4px;
+    }
+    .intro { color: var(--text-muted); margin-bottom: 28px; font-size: 14.5px; }
+
+    h2 {
+      font-size: 17px;
+      color: var(--text);
+      margin: 32px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 { font-size: 15px; margin: 20px 0 8px; color: var(--text); }
+
+    p { margin-bottom: 12px; }
+    code {
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 13px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 5px;
+      color: var(--accent);
+    }
+
+    ul.bullets { padding-left: 18px; margin: 10px 0 16px; }
+    ul.bullets li { margin-bottom: 6px; color: var(--text); }
+    ul.bullets li strong { color: var(--text); }
+
+    .callout {
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 18px 0;
+      font-size: 13.5px;
+      line-height: 1.6;
+      border: 1px solid var(--border);
+    }
+    .callout strong { display: block; margin-bottom: 3px; font-size: 13px; }
+    .callout.tip   { background: var(--green-bg); border-color: var(--green); }
+    .callout.tip strong { color: var(--green); }
+    .callout.warn  { background: var(--red-bg); border-color: var(--red); }
+    .callout.warn strong { color: var(--red); }
+    .callout.note  { background: var(--accent-bg); border-color: var(--accent); }
+    .callout.note strong { color: var(--accent); }
+
+    .code-block {
+      margin: 16px 0 22px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .code-block .lang-tag {
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 11px;
+      padding: 7px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .copy-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .copy-btn.copied { color: var(--green); border-color: var(--green); }
+    .code-block pre {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      padding: 16px;
+      overflow-x: auto;
+      margin: 0;
+    }
+
+    .kw { color: #c586c0; }
+    .fn { color: #dcdcaa; }
+    .st { color: #ce9178; }
+    .cm { color: #6a9955; font-style: italic; }
+    .nb { color: #4ec9b0; }
+    .num { color: #b5cea8; }
+
+    .footer-nav {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .nav-btn {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      font-size: 13px;
+      text-decoration: none;
+    }
+    .nav-btn.proximo {
+      background: var(--accent);
+      color: #1a1a1a;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+    .nav-btn.disabled {
+      opacity: .4;
+      pointer-events: none;
+    }
+
+    .progress-track {
+      position: fixed;
+      top: 56px; left: 0; right: 0;
+      height: 3px;
+      background: var(--bg-elevated);
+      z-index: 200;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 8%;
+      transition: width .3s;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="menu-btn" onclick="toggleMenu()">☰</button>
+  <div class="topbar-title">Tutorial Interativo - <span>Kanban</span></div>
+</div>
+<div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+<div class="overlay" id="overlay" onclick="toggleMenu()"></div>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <strong>Sequência de Tarefas</strong>
+  </div>
+
+  <div class="nav-section">Configuração do Backend</div>
+  <a href="#etapa-1" class="active">1. Configurações Iniciais</a>
+
+  <div class="nav-section">Autenticação de Usuário</div>
+  <a href="#etapa-2">2. Login e Logout</a>
+
+  <div class="nav-section">Entidades do Banco de Dados</div>
+  <a href="#etapa-3">3. Usuários</a>
+  <a href="#etapa-4">4. Status de Tarefas</a>
+  <a href="#etapa-5">5. Tarefas</a>
+</nav>
+
+<main>
+
+  <section id="etapa-1">
+
+    <span class="etapa-tag">ETAPA 1 DE 6</span>
+    <h1>Importações, Configuração do Backend e Banco de Dados</h1>
+    <p class="intro">Antes de criar qualquer rota, o backend precisa importar as bibliotecas certas, configurar a aplicação da web em Flask, e ter um banco de dados já criado e conectado. Essa é a base sobre a qual tudo o resto vai ser construído.</p>
+
+    <h2>Passo a Passo</h2>
+    <p>Primeiro crie a pasta do projeto e instale as bibliotecas necessárias. Depois crie o arquivo de backend com todas as importações, e configurações do Flask, do CORS e do JWT, sem nenhuma rota ainda. Por fim, crie o banco de dados e o arquivo responsável pela conexão com ele. Isso garante que, ao rodar o servidor da web, ele já inicia sem erros antes de adicionarmos qualquer funcionalidade.</p>
+
+    <h3>Passo 1 - Crie a pasta do projeto</h3>
+    <p>Abra o VS Code (ou outro editor de código de sua preferência) e crie uma nova pasta vazia chamada de <code>Kanban com SQL Puro</code>. Essa pasta será a raiz do projeto, e é dentro dela que todos os arquivos e subpastas das próximas etapas vão ser criados.</p>
+
+    <div class="callout note">
+      <strong>Abrindo a pasta no VS Code</strong>
+      No VS Code, vá em <code>Arquivo → Abrir Pasta</code> e selecione a pasta chamada de <code>Kanban com SQL Puro</code> que você acabou de criar. Isso garante que o terminal integrado do editor já abra na pasta correta do projeto.
+    </div>
+
+    <h3>Passo 2 - Crie o arquivo de backend (app.py)</h3>
+    <p>Na raiz do seu projeto, crie um arquivo chamado de <code>app.py</code> com o conteúdo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># Bibliotecas para arquitetura de aplicações da web.</span>
+<span class="kw">from</span> flask <span class="kw">import</span> Flask, request, jsonify
+
+<span class="cm"># Biblioteca para criptografar senhas.</span>
+<span class="kw">from</span> werkzeug.security <span class="kw">import</span> generate_password_hash, check_password_hash
+
+<span class="cm"># Biblioteca para interação do frontend com o backend.</span>
+<span class="kw">from</span> flask_cors <span class="kw">import</span> CORS
+
+<span class="cm"># Biblioteca para autenticação do Token da Web (JWT).</span>
+<span class="kw">from</span> flask_jwt_extended <span class="kw">import</span> JWTManager, create_access_token, jwt_required, get_jwt_identity, get_jwt
+
+<span class="cm"># Biblioteca para manipular datas.</span>
+<span class="kw">from</span> datetime <span class="kw">import</span> timedelta
+
+<span class="cm"># Módulo de conexão com o banco de dados.</span>
+<span class="kw">from</span> database <span class="kw">import</span> database_connection
+
+<span class="cm"># Biblioteca para leitura de variáveis de ambiente.</span>
+<span class="kw">import</span> os
+<span class="kw">from</span> dotenv <span class="kw">import</span> load_dotenv
+
+<span class="cm"># Captura as variáveis de ambiente.</span>
+<span class="fn">load_dotenv</span>()
+
+<span class="cm"># Inicia a aplicação da web.</span>
+app = <span class="nb">Flask</span>(__name__)
+
+<span class="cm"># Permite que sejam feitas requisições de fora.</span>
+<span class="fn">CORS</span>(app)
+
+<span class="cm"># Configurações do Token da Web (JWT).</span>
+app.config[<span class="st">"JWT_SECRET_KEY"</span>] = os.<span class="fn">getenv</span>(<span class="st">"JWT_SECRET_KEY"</span>)
+app.config[<span class="st">"JWT_ACCESS_TOKEN_EXPIRES"</span>] = <span class="nb">timedelta</span>(hours=<span class="num">8</span>)
+
+<span class="cm"># Inicializa o gerenciador de Tokens da Web (JWT).</span>
+jwt = <span class="nb">JWTManager</span>(app)
+
+
+<span class="cm"># Executa a aplicação da web com modo de depuração ativo.</span>
+<span class="kw">if</span> __name__ == <span class="st">"__main__"</span>:
+    app.<span class="fn">run</span>(debug=<span class="kw">True</span>)</pre>
+    </div>
+
+    <h3>Passo 3 - Instale as bibliotecas necessárias</h3>
+    <p>Olhando para as importações do <code>app.py</code>, algumas vêm prontas com o Python (como <code>os</code> e <code>datetime</code>), mas outras precisam ser instaladas manualmente. Com o terminal de comandos do VS Code aberto na pasta do projeto, rode o comando abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">bash<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>pip install flask flask-cors flask-jwt-extended python-dotenv mysql-connector-python</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que esses pacotes e não os nomes das importações?</strong>
+      O nome que você usa no <code>pip install</code> nem sempre é igual ao nome usado no <code>import</code>. Por exemplo, você instala <code>flask-jwt-extended</code>, mas importa com <code>flask_jwt_extended</code> (com underline). Já <code>mysql-connector-python</code> é instalado com esse nome, mas importado como <code>mysql.connector</code>, que vamos usar no <code>database.py</code> mais adiante. O <code>werkzeug.security</code> não precisa de instalação separada, pois já vem junto com o Flask.
+    </div>
+
+    <h3>Passo 4 - Crie o banco de dados (schema.sql)</h3>
+    <p>Abra o MySQL Workbench (ou outro cliente MySQL de sua preferência) e execute o conteúdo abaixo, que cria o banco de dados completo com as três tabelas que o projeto vai usar:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">sql — schema.sql<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">-- Cria e define o uso do banco de dados.</span>
+<span class="kw">DROP DATABASE IF EXISTS</span> kanban_db;
+<span class="kw">CREATE DATABASE</span> kanban_db;
+<span class="kw">USE</span> kanban_db;
+
+<span class="cm">-- Cria a tabela para armazenar dados dos usuários.</span>
+<span class="kw">CREATE TABLE</span> usuario (
+    id <span class="kw">INT NOT NULL PRIMARY KEY AUTO_INCREMENT</span>,
+    nome <span class="kw">VARCHAR</span>(100) <span class="kw">NOT NULL</span>,
+    cpf <span class="kw">VARCHAR</span>(14) <span class="kw">NOT NULL UNIQUE</span>,
+    email <span class="kw">VARCHAR</span>(100) <span class="kw">NOT NULL UNIQUE</span>,
+    senha <span class="kw">VARCHAR</span>(255) <span class="kw">NOT NULL</span>,
+    telefone <span class="kw">VARCHAR</span>(20),
+    data_nascimento <span class="kw">DATE</span>,
+    administrador <span class="kw">TINYINT NOT NULL DEFAULT</span> 0,
+    criado_em <span class="kw">DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP</span>
+);
+
+<span class="cm">-- Tabela para armazenar dados de status de tarefas.</span>
+<span class="kw">CREATE TABLE</span> status_tarefa (
+    id <span class="kw">INT NOT NULL PRIMARY KEY AUTO_INCREMENT</span>,
+    nome <span class="kw">VARCHAR</span>(50) <span class="kw">NOT NULL UNIQUE</span>
+);
+
+<span class="cm">-- Tabela para armazenar dados das tarefas.</span>
+<span class="kw">CREATE TABLE</span> tarefa (
+    id <span class="kw">INT NOT NULL PRIMARY KEY AUTO_INCREMENT</span>,
+    titulo <span class="kw">VARCHAR</span>(100) <span class="kw">NOT NULL</span>,
+    descricao <span class="kw">TEXT</span>,
+    arquivo <span class="kw">LONGBLOB</span>,
+    criado_em <span class="kw">DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP</span>,
+    id_usuario <span class="kw">INT NOT NULL</span>,
+    id_status_tarefa <span class="kw">INT NOT NULL</span>,
+
+    <span class="cm">-- Chaves estrangeiras.</span>
+    <span class="kw">FOREIGN KEY</span> (id_usuario) <span class="kw">REFERENCES</span> usuario(id),
+    <span class="kw">FOREIGN KEY</span> (id_status_tarefa) <span class="kw">REFERENCES</span> status_tarefa(id)
+);
+
+<span class="cm">-- Cadastra o administrador padrão.</span>
+<span class="kw">INSERT INTO</span> usuario (nome, cpf, email, senha, administrador) <span class="kw">VALUES</span> (
+    <span class="st">'Administrador'</span>,
+    <span class="st">'123.456.789-10'</span>,
+    <span class="st">'administrador@email.com'</span>,
+    <span class="st">'scrypt:32768:8:1$RAU3fMgKrf9YJdeU$11475b439bf7d38f8cd14019948dc6192eaee5140454c3298e655d7569ad5de0f713f411f9124e4c5a75ce2b3c6a531968ac997f625da1af0d9cac1b01b8c78e'</span>,
+    1
+);</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que criar as três tabelas agora?</strong>
+      Mesmo sem ainda termos rotas para status de tarefas e tarefas, criar o banco de dados completo de uma vez evita ter que voltar ao MySQL Workbench mais vezes ao longo do percurso. Neste caso, as tabelas <code>status_tarefa</code> e <code>tarefa</code> vão ficar vazias e sem uso até as etapas correspondentes.
+    </div>
+
+    <div class="callout tip">
+      <strong>Sobre o usuário administrador</strong>
+      A senha já está em formato de hash, gerado pelo <code>generate_password_hash</code> do Werkzeug. A senha original antes de ser criptografada é <code>123456789</code>. Use o CPF <code>123.456.789-10</code> para fazer login com esse usuário mais adiante.
+    </div>
+
+    <h3>Passo 5 - Crie o arquivo de conexão com o banco de dados (database.py)</h3>
+    <p>Na raiz do seu projeto, na mesma pasta do <code>app.py</code>, crie um arquivo chamado de <code>database.py</code> com o conteúdo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — database.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># Biblioteca de conexão com o banco de dados.</span>
+<span class="kw">import</span> mysql.connector
+
+<span class="cm"># Biblioteca para leitura de variáveis de ambiente.</span>
+<span class="kw">import</span> os
+<span class="kw">from</span> dotenv <span class="kw">import</span> load_dotenv
+
+<span class="cm"># Carrega as variáveis do arquivo .env.</span>
+<span class="fn">load_dotenv</span>()
+
+<span class="cm"># Função responsável pela conexão com o banco de dados.</span>
+<span class="kw">def</span> <span class="fn">database_connection</span>():
+
+    <span class="kw">return</span> mysql.connector.<span class="fn">connect</span>(
+        host=os.<span class="fn">getenv</span>(<span class="st">"DB_HOST"</span>),
+        user=os.<span class="fn">getenv</span>(<span class="st">"DB_USER"</span>),
+        password=os.<span class="fn">getenv</span>(<span class="st">"DB_PASSWORD"</span>),
+        database=os.<span class="fn">getenv</span>(<span class="st">"DB_NAME"</span>)
+    )</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que um arquivo separado para a conexão com o banco de dados?</strong>
+      Centralizar a conexão com o banco de dados em um único arquivo evita repetição de código. Se as credenciais do banco de dados mudarem no futuro, a alteração é feita em um único lugar, em vez de em cada rota do <code>app.py</code>.
+    </div>
+
+    <h3>Passo 6 - Crie o arquivo para variáveis de ambiente (.env)</h3>
+    <p>Na mesma pasta do projeto, crie um arquivo chamado de <code>.env</code> com o conteúdo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">.env<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+<pre>
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=root
+DB_NAME=kanban_db
+JWT_SECRET_KEY=071EF56F05659CE118FE254EA70246AD
+</pre>
+    </div>
+
+    <div class="callout warn">
+      <strong>Atenção</strong>
+      O arquivo chamado de <code>.env</code> nunca deve ser enviado para o GitHub. Ele contém senhas e chaves de acesso.
+    </div>
+
+    <h3>Passo 7 - Estrutura atual de pastas do projeto</h3>
+    <p>Até este ponto, sua pasta de projeto deve estar organizada assim:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">estrutura de pastas<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>Kanban com SQL Puro/
+│
+├── app.py
+├── database.py
+└── .env</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Mais arquivos virão</strong>
+      Por enquanto a pasta tem só esses três arquivos. Nas próximas etapas vamos adicionar a pasta de arquivos estáticos, chamada de <code>static/</code> com o JavaScript e o CSS, e a pasta de arquivos de HTML, chamada de <code>templates/</code>.
+    </div>
+
+    <h3>Passo 8 - Teste se a aplicação da web funciona</h3>
+    <p>Com o terminal aberto na pasta do projeto, rode o conteúdo do arquivo de backend (app.py):</p>
+
+    <div class="code-block">
+      <div class="lang-tag">bash<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>python app.py</pre>
+    </div>
+
+    <p>Se tudo estiver certo, o terminal de comandos deve mostrar algo como <code>Running on http://127.0.0.1:5000</code>. Se aparecer algum erro de conexão com o banco de dados, verifique se o MySQL está rodando e se os dados no arquivo chamado de <code>.env</code> estão corretos.</p>
+
+    <div class="footer-nav"></div>
+
+</section>
+<section id="etapa-2">
+
+    <span class="etapa-tag">ETAPA 2 DE 6</span>
+    <h1>Login e Logout</h1>
+    <p class="intro">Com o backend configurado, vamos criar a primeira funcionalidade real do To do List - Kanban, que é a autenticação de usuário. O usuário envia CPF e senha, o backend verifica no banco de dados e devolve um Token da Web (JWT) que autoriza o acesso às próximas rotas.</p>
+
+    <h2>Passo a Passo</h2>
+    <p>Primeiro vamos criar as rotas de login e logout de usuário no backend, depois as telas de login e do painel de gerenciamento no frontend, e por fim o JavaScript que conecta tudo isso.</p>
+
+    <h3>Passo 1 - Crie a rota de login de usuário no backend</h3>
+    <p>No arquivo chamado de <code>app.py</code>, logo após a linha <code>jwt = JWTManager(app)</code>, adicione a rota exibida abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para fazer login.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/login"</span>, methods=[<span class="st">"POST"</span>])
+<span class="kw">def</span> <span class="fn">login</span>():
+
+    <span class="cm"># Recebe os dados do frontend.</span>
+    dados = request.<span class="fn">get_json</span>()
+    cpf = dados.<span class="fn">get</span>(<span class="st">"cpf"</span>)
+    senha = dados.<span class="fn">get</span>(<span class="st">"senha"</span>)
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Roda o SQL para buscar os dados do usuário.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT * FROM usuario WHERE cpf = %s"</span>, (cpf,))
+    usuario = cursor.<span class="fn">fetchone</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="cm"># Verifica se o usuário existe e se a senha está correta.</span>
+    <span class="kw">if not</span> usuario <span class="kw">or not</span> <span class="fn">check_password_hash</span>(usuario[<span class="st">"senha"</span>], senha):
+
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"CPF ou senha inválidos..."</span>}), <span class="num">401</span>
+
+    <span class="cm"># Gera o token da web (JWT) com o ID do usuário.</span>
+    token = <span class="fn">create_access_token</span>(
+        identity=<span class="nb">str</span>(usuario[<span class="st">"id"</span>]),
+        additional_claims={
+            <span class="st">"administrador"</span>: <span class="nb">bool</span>(usuario[<span class="st">"administrador"</span>])
+        })
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"token"</span>: token}), <span class="num">200</span></pre>
+    </div>
+
+    <h3>Passo 2 - Crie a rota de logout de usuário no backend</h3>
+    <p>Logo abaixo da rota de login de usuário, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para fazer logout.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/logout"</span>, methods=[<span class="st">"POST"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">logout</span>():
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Logout realizado com sucesso!"</span>}), <span class="num">200</span></pre>
+    </div>
+
+    <h3>Passo 3 - Compreender as duas rotas criadas</h3>
+    <ul class="bullets">
+      <li><strong>cursor(dictionary=True)</strong> faz o cursor retornar os dados como dicionário (<code>usuario["cpf"]</code>), em vez de tupla (<code>usuario[0]</code>).</li>
+      <li><strong>check_password_hash</strong> compara a senha digitada com o hash que está armazenado no banco de dados.</li>
+      <li><strong>identity=str(usuario["id"])</strong> é obrigatório ser uma string simples. O Flask-JWT-Extended não aceita um dicionário inteiro como identidade do token.</li>
+      <li><strong>additional_claims</strong> guarda informações extras dentro do token da web, como se o usuário é administrador, e pode ser lido em qualquer rota protegida.</li>
+      <li><strong>@jwt_required()</strong> na rota de logout exige que um token da web válido seja enviado na requisição. Sem ele, o backend retorna erro <code>401</code> automaticamente.</li>
+      <li><strong>401</strong> é o código de HTTP usado quando as credenciais estão incorretas (não autorizado).</li>
+    </ul>
+
+    <div class="callout note">
+      <strong>Por que o logout não apaga nada no banco de dados?</strong>
+      Com JWT (Token da Web), a invalidação do token acontece no navegador do usuário, não no servidor. Por isso a rota de logout é tão simples, ela só confirma que recebeu um token da web válido. Quem realmente desconecta o usuário é o frontend, apagando o token da web salvo.
+    </div>
+
+    <h3>Passo 4 - Crie o formulário de login no frontend</h3>
+    <p>Crie uma pasta para guardar seus arquivos de HTML, ela deverá ser chamada de <code>templates/</code>. Dentro dela, crie um arquivo chamado de <code>index.html</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">html — index.html<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="pt-BR"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"/&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"/&gt;
+  &lt;title&gt;Login - Taskan&lt;/title&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/&gt;
+  &lt;link rel="stylesheet" href="../static/css/styles.css"/&gt;
+&lt;/head&gt;
+&lt;body class="bg-light d-flex align-items-center justify-content-center vh-100"&gt;
+
+  &lt;div class="card shadow-sm card-login"&gt;
+    &lt;div class="card-body p-4"&gt;
+
+      &lt;div class="text-center mb-4"&gt;
+        &lt;img src="../static/images/Logotipo - Taskan.png" alt="Logotipo - Taskan" class="logo-login"/&gt;
+      &lt;/div&gt;
+
+      &lt;div class="mb-3"&gt;
+        &lt;label class="form-label"&gt;CPF&lt;/label&gt;
+        &lt;input type="text" class="form-control" id="cpf" placeholder="000.000.000-00"/&gt;
+      &lt;/div&gt;
+
+      &lt;div class="mb-3"&gt;
+        &lt;label class="form-label"&gt;Senha&lt;/label&gt;
+        &lt;input type="password" class="form-control" id="senha" placeholder="Informe sua senha..."/&gt;
+      &lt;/div&gt;
+
+      &lt;button class="btn btn-primary w-100 mb-3" onclick="fazer_login()"&gt;Entrar&lt;/button&gt;
+
+      &lt;div id="mensagem" class="text-center"&gt;&lt;/div&gt;
+
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Vinculo com os arquivos de JS --&gt;
+  &lt;script src="../static/js/utilidades.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/index.js"&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>O que é a DIV #mensagem?</strong>
+      É um espaço vazio reservado para o JavaScript exibir mensagens de erro ou sucesso depois da tentativa de login de usuário. Ela começa vazia e é preenchida dinamicamente.
+    </div>
+
+    <h3>Passo 5 - Crie a tela do painel de gerenciamento no frontend</h3>
+    <p>Na mesma pasta de <code>templates/</code>, crie um arquivo chamado de <code>dashboard.html</code> com o conteúdo completo abaixo. É para essa tela que o usuário será redirecionado após o login:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">html — dashboard.html<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="pt-BR"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"/&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"/&gt;
+  &lt;title&gt;Painel de Gerenciamento - Taskan&lt;/title&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/&gt;
+  &lt;link rel="stylesheet" href="../static/css/styles.css"/&gt;
+&lt;/head&gt;
+&lt;body&gt;
+
+  &lt;!-- Sidebar --&gt;
+  &lt;div class="sidebar d-flex flex-column p-3"&gt;
+    &lt;div class="sidebar-logo mb-4"&gt;
+      &lt;img src="../static/images/Logotipo do Sidebar - Taskan.png" alt="Logotipo - Taskan" class="logo-sidebar"/&gt;
+    &lt;/div&gt;
+    &lt;nav class="nav flex-column gap-1"&gt;
+      &lt;a href="dashboard.html" class="nav-link active"&gt;Dashboard&lt;/a&gt;
+      &lt;a href="usuarios.html" class="nav-link"&gt;Usuários&lt;/a&gt;
+      &lt;a href="status_tarefa.html" class="nav-link"&gt;Status de Tarefas&lt;/a&gt;
+      &lt;a href="tarefas.html" class="nav-link"&gt;Tarefas&lt;/a&gt;
+    &lt;/nav&gt;
+    &lt;div class="mt-auto"&gt;
+      &lt;button class="btn btn-outline-light w-100" onclick="fazer_logout()"&gt;Sair&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Conteúdo principal --&gt;
+  &lt;div class="conteudo"&gt;
+
+    &lt;h4 class="mb-4"&gt;Painel de Gerenciamento&lt;/h4&gt;
+
+    &lt;!-- Cartões de resumo --&gt;
+    &lt;div class="row g-3 mb-5"&gt;
+      &lt;div class="col-md-4"&gt;
+        &lt;div class="card shadow-sm"&gt;
+          &lt;div class="card-body"&gt;
+            &lt;p class="text-muted mb-1"&gt;Total de Tarefas&lt;/p&gt;
+            &lt;h3 id="total-tarefas"&gt;—&lt;/h3&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Quadro do Kanban --&gt;
+    &lt;h4 class="mb-3"&gt;Kanban&lt;/h4&gt;
+    &lt;div class="quadro-kanban" id="quadro-kanban"&gt;
+
+      &lt;!-- Colunas geradas dinamicamente pelo JS --&gt;
+
+    &lt;/div&gt;
+
+  &lt;/div&gt;
+
+  &lt;!-- Vinculo com os arquivos de JS --&gt;
+  &lt;script src="../static/js/utilidades.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/dashboard.js"&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Sobre os elementos vazios desta tela</strong>
+      O cartão de <code>Total de Tarefas</code> e o <code>quadro-kanban</code> ainda estão sem nenhum dado, pois ainda não criamos as rotas de tarefas. Eles vão ser preenchidos automaticamente pelo JavaScript em uma etapa futura.
+    </div>
+
+    <h3>Passo 6 - Crie o JavaScript de utilidades compartilhadas</h3>
+    <p>Crie uma pasta para guardar todos os arquivos estáticos do To do List - Kanban, ela deverá ser chamada de <code>static/</code>. Depois crie dentro da pasta de arquivos estáticos uma nova pasta que irá guardar apenas arquivos de JavaScript, chamada de <code>js/</code>. Dentro dela, crie um arquivo chamado de <code>utilidades.js</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">javascript — utilidades.js<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">// Captura o campo de CPF.</span>
+<span class="kw">const</span> campoCPF = document.<span class="fn">getElementById</span>(<span class="st">"cpf"</span>);
+
+<span class="cm">// Aplica a máscara apenas se o campo existir na página atual.</span>
+<span class="kw">if</span> (campoCPF) {
+
+    <span class="cm">// Aplica a máscara de CPF ao campo de entrada.</span>
+    campoCPF.<span class="fn">addEventListener</span>(<span class="st">"input"</span>, <span class="kw">function</span> () {
+
+        <span class="cm">// Remove tudo que não for número.</span>
+        <span class="kw">let</span> valor = <span class="kw">this</span>.value.<span class="fn">replace</span>(<span class="st">/\D/g</span>, <span class="st">""</span>);
+
+        <span class="cm">// Aplica a máscara no padrão do CPF.</span>
+        <span class="kw">if</span> (valor.length &lt;= <span class="num">3</span>) {
+            <span class="kw">this</span>.value = valor;
+        } <span class="kw">else if</span> (valor.length &lt;= <span class="num">6</span>) {
+            <span class="kw">this</span>.value = `${valor.<span class="fn">slice</span>(<span class="num">0</span>, <span class="num">3</span>)}.${valor.<span class="fn">slice</span>(<span class="num">3</span>)}`;
+        } <span class="kw">else if</span> (valor.length &lt;= <span class="num">9</span>) {
+            <span class="kw">this</span>.value = `${valor.<span class="fn">slice</span>(<span class="num">0</span>, <span class="num">3</span>)}.${valor.<span class="fn">slice</span>(<span class="num">3</span>, <span class="num">6</span>)}.${valor.<span class="fn">slice</span>(<span class="num">6</span>)}`;
+        } <span class="kw">else</span> {
+            <span class="kw">this</span>.value = `${valor.<span class="fn">slice</span>(<span class="num">0</span>, <span class="num">3</span>)}.${valor.<span class="fn">slice</span>(<span class="num">3</span>, <span class="num">6</span>)}.${valor.<span class="fn">slice</span>(<span class="num">6</span>, <span class="num">9</span>)}-${valor.<span class="fn">slice</span>(<span class="num">9</span>, <span class="num">11</span>)}`;
+        }
+
+    });
+
+}
+
+<span class="cm">// Captura o campo de telefone.</span>
+<span class="kw">const</span> campoTelefone = document.<span class="fn">getElementById</span>(<span class="st">"telefone"</span>);
+
+<span class="cm">// Aplica a máscara apenas se o campo existir na página atual.</span>
+<span class="kw">if</span> (campoTelefone) {
+
+    <span class="cm">// Aplica a máscara de telefone celular ao campo de entrada.</span>
+    campoTelefone.<span class="fn">addEventListener</span>(<span class="st">"input"</span>, <span class="kw">function</span> () {
+
+        <span class="cm">// Remove tudo que não for número.</span>
+        <span class="kw">let</span> valor = <span class="kw">this</span>.value.<span class="fn">replace</span>(<span class="st">/\D/g</span>, <span class="st">""</span>);
+
+        <span class="cm">// Aplica a máscara no padrão do telefone celular.</span>
+        <span class="kw">if</span> (valor.length &lt;= <span class="num">2</span>) {
+            <span class="kw">this</span>.value = valor;
+        } <span class="kw">else if</span> (valor.length &lt;= <span class="num">7</span>) {
+            <span class="kw">this</span>.value = `(${valor.<span class="fn">slice</span>(<span class="num">0</span>, <span class="num">2</span>)}) ${valor.<span class="fn">slice</span>(<span class="num">2</span>)}`;
+        } <span class="kw">else</span> {
+            <span class="kw">this</span>.value = `(${valor.<span class="fn">slice</span>(<span class="num">0</span>, <span class="num">2</span>)}) ${valor.<span class="fn">slice</span>(<span class="num">2</span>, <span class="num">7</span>)}-${valor.<span class="fn">slice</span>(<span class="num">7</span>, <span class="num">11</span>)}`;
+        }
+
+    });
+
+}</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que esse arquivo é compartilhado?</strong>
+      O <code>utilidades.js</code> é carregado em todas as páginas de HTML do projeto. As verificações (<code>if (campoCPF)</code> e <code>if (campoTelefone)</code>) existem porque os campos de <code>CPF</code> e <code>Telefone</code> só existem em algumas telas. Sem essas verificações, o JavaScript quebraria nas demais páginas de HTML, que não têm esses campos.
+    </div>
+
+    <h3>Passo 7 - Crie o JavaScript que envia os dados de login de usuário</h3>
+    <p>Na pasta de <code>js/</code> que está dentro de <code>static/</code>, crie um arquivo chamado de <code>index.js</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">javascript — index.js<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">// Função para fazer o login.</span>
+<span class="kw">async function</span> <span class="fn">fazer_login</span>() {
+
+    <span class="cm">// Captura os dados do formulário.</span>
+    <span class="kw">const</span> cpf = document.<span class="fn">getElementById</span>(<span class="st">"cpf"</span>).value;
+    <span class="kw">const</span> senha = document.<span class="fn">getElementById</span>(<span class="st">"senha"</span>).value;
+    <span class="kw">const</span> mensagem = document.<span class="fn">getElementById</span>(<span class="st">"mensagem"</span>);
+
+    <span class="kw">try</span> {
+
+        <span class="cm">// Envia os dados para o backend.</span>
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/login"</span>, {
+            method: <span class="st">"POST"</span>,
+            headers: { <span class="st">"Content-Type"</span>: <span class="st">"application/json"</span> },
+            body: JSON.<span class="fn">stringify</span>({ cpf, senha })
+        });
+
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+
+        <span class="cm">// Verifica se o login foi bem-sucedido.</span>
+        <span class="kw">if</span> (resposta.ok) {
+
+            <span class="cm">// Salva o token no navegador da web e redireciona para o painel de gerenciamento.</span>
+            localStorage.<span class="fn">setItem</span>(<span class="st">"token"</span>, dados.token);
+            window.location.href = <span class="st">"dashboard.html"</span>;
+
+        } <span class="kw">else</span> {
+
+            <span class="cm">// Exibe a mensagem de erro retornada pelo backend.</span>
+            mensagem.className = <span class="st">"alert alert-danger"</span>;
+            mensagem.textContent = dados.erro;
+
+            <span class="cm">// Remove a mensagem de erro após 4 segundos.</span>
+            <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+                mensagem.className = <span class="st">""</span>;
+                mensagem.textContent = <span class="st">""</span>;
+            }, <span class="num">4000</span>);
+
+        }
+
+    } <span class="kw">catch</span> {
+
+        <span class="cm">// Exibe a mensagem de erro caso o backend não esteja disponível.</span>
+        mensagem.className = <span class="st">"alert alert-warning"</span>;
+        mensagem.textContent = <span class="st">"Não foi possível atender sua requisição no momento. Tente mais tarde..."</span>;
+
+        <span class="cm">// Remove a mensagem de erro após 4 segundos.</span>
+        <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+            mensagem.className = <span class="st">""</span>;
+            mensagem.textContent = <span class="st">""</span>;
+        }, <span class="num">4000</span>);
+
+    }
+
+}</pre>
+    </div>
+
+    <div class="callout warn">
+      <strong>Atenção ao caminho do redirecionamento</strong>
+      O <code>window.location.href = "dashboard.html"</code> funciona corretamente porque o <code>index.html</code> e o <code>dashboard.html</code> estão dentro da mesma pasta de <code>templates/</code>. Se você colocar <code>../templates/dashboard.html</code> aqui, o caminho vai ficar errado, pois o navegador da web vai tentar sair da pasta atual e entrar em <code>templates/</code> de novo.
+    </div>
+
+    <h3>Passo 8 - Crie o JavaScript que protege o painel de gerenciamento e que faz o logout</h3>
+    <p>Na pasta de <code>js/</code> que fica dentro de <code>static/</code>, crie um arquivo chamado de <code>dashboard.js</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">javascript — dashboard.js<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">// Verifica se o usuário está logado ao carregar o painel de gerenciamento.</span>
+<span class="kw">if</span> (!localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)) {
+
+    <span class="cm">// Redireciona para o login.</span>
+    window.location.href = <span class="st">"index.html"</span>;
+}
+
+<span class="cm">// Função para fazer o logout.</span>
+<span class="kw">async function</span> <span class="fn">fazer_logout</span>() {
+
+    <span class="cm">// Recupera o token salvo no navegador da web.</span>
+    <span class="kw">const</span> token = localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>);
+
+    <span class="cm">// Envia a requisição de logout para o backend.</span>
+    <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/logout"</span>, {
+        method: <span class="st">"POST"</span>,
+        headers: {
+            <span class="st">"Content-Type"</span>: <span class="st">"application/json"</span>,
+            <span class="st">"Authorization"</span>: `Bearer ${token}`
+        }
+    });
+
+    <span class="cm">// Remove o token do navegador da web e redireciona para o login.</span>
+    localStorage.<span class="fn">removeItem</span>(<span class="st">"token"</span>);
+    window.location.href = <span class="st">"index.html"</span>;
+
+}</pre>
+    </div>
+
+    <h3>Passo 9 - Compreender a proteção do painel de gerenciamento</h3>
+    <ul class="bullets">
+      <li><strong>if (!localStorage.getItem("token"))</strong> roda imediatamente quando o arquivo é carregado, antes de qualquer outra coisa na página de HTML. Se não houver token da web salvo, o usuário é redirecionado de volta para o login, impedindo o acesso direto ao painel de gerenciamento.</li>
+      <li><strong>Authorization: Bearer ${token}</strong> é o formato padrão exigido pelo Flask-JWT-Extended para receber o token da wen nas requisições protegidas.</li>
+      <li>O logout remove o token da wen do navegador independentemente da resposta do backend, garantindo que o usuário sempre seja desconectado.</li>
+    </ul>
+
+    <h3>Passo 10 - Estrutura atual de pastas do projeto</h3>
+    <p>Até este ponto, sua pasta de projeto deve estar organizada assim:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">estrutura de pastas<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>Kanban com SQL Puro/
+│
+├── app.py
+├── database.py
+├── .env
+│
+├── static/
+│   └── js/
+│       ├── utilidades.js
+│       ├── index.js
+│       └── dashboard.js
+│
+└── templates/
+    ├── index.html
+    └── dashboard.html</pre>
+    </div>
+
+    <h3>Passo 11 - Teste o login, o painel de gerenciamento e o logout</h3>
+    <p>Execute o arquivo de backend (<code>python app.py</code>), abra o arquivo chamado de <code>index.html</code> no navegador da web (de preferência usando uma extensão como o Live Server) e tente fazer login com o CPF e a senha do administrador padrão cadastrado no Passo 2 da etapa anterior.</p>
+
+    <div class="callout tip">
+      <strong>Esperado nesta etapa</strong>
+      Após o login, você deve ser redirecionado para o painel de gerenciamento, com o cartão de <code>Total de Tarefas</code> exibindo apenas um traço. Clique no botão <code>Sair</code> para testar o logout, que deve te redirecionar de volta para a tela de login.
+    </div>
+
+    <div class="footer-nav"></div>
+
+</section>
+<section id="etapa-3">
+
+    <span class="etapa-tag">ETAPA 3 DE 6</span>
+    <h1>Usuários</h1>
+    <p class="intro">Com a autenticação de usuário funcionando, vamos criar o primeiro CRUD (Create, Read, Update and Delete) completo do To do List - Kanban, que é o de usuários. Apenas administradores podem cadastrar, listar, editar e excluir usuários.</p>
+
+    <h2>Passo a Passo</h2>
+    <p>Primeiro vamos criar as quatro rotas de usuários no backend, depois a tela de usuários no frontend, e por fim o JavaScript que conecta tudo isso.</p>
+
+    <h3>Passo 1 - Crie a rota de cadastro de usuário no backend</h3>
+    <p>No arquivo chamado de <code>app.py</code>, logo após a rota de logout, adicione a rota exibida abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para cadastrar um novo usuário.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/usuarios"</span>, methods=[<span class="st">"POST"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">cadastrar_usuario</span>():
+
+    <span class="cm"># Verifica se o usuário logado é administrador.</span>
+    usuario_logado = <span class="fn">get_jwt</span>()
+    <span class="kw">if not</span> usuario_logado[<span class="st">"administrador"</span>]:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Recebe os dados do frontend.</span>
+    dados = request.<span class="fn">get_json</span>()
+    nome = dados.<span class="fn">get</span>(<span class="st">"nome"</span>)
+    cpf = dados.<span class="fn">get</span>(<span class="st">"cpf"</span>)
+    email = dados.<span class="fn">get</span>(<span class="st">"email"</span>)
+    senha = dados.<span class="fn">get</span>(<span class="st">"senha"</span>)
+    telefone = dados.<span class="fn">get</span>(<span class="st">"telefone"</span>)
+    data_nascimento = dados.<span class="fn">get</span>(<span class="st">"data_nascimento"</span>)
+    administrador = dados.<span class="fn">get</span>(<span class="st">"administrador"</span>, <span class="kw">False</span>)
+
+    <span class="cm"># Criptografa a senha.</span>
+    senha_hash = <span class="fn">generate_password_hash</span>(senha)
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Verifica se o CPF ou e-mail já estão cadastrados.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id FROM usuario WHERE cpf = %s OR email = %s"</span>, (cpf, email))
+    <span class="kw">if</span> cursor.<span class="fn">fetchone</span>():
+        cursor.<span class="fn">close</span>()
+        link.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"CPF ou e-mail já cadastrados..."</span>}), <span class="num">409</span>
+
+    <span class="cm"># Roda o SQL para cadastrar o usuário.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"""</span>
+<span class="st">        INSERT INTO usuario (nome, cpf, email, senha, telefone, data_nascimento, administrador)</span>
+<span class="st">        VALUES (%s, %s, %s, %s, %s, %s, %s)</span>
+<span class="st">    """</span>, (nome, cpf, email, senha_hash, telefone, data_nascimento, administrador))
+
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Usuário cadastrado com sucesso!"</span>}), <span class="num">201</span></pre>
+    </div>
+
+    <h3>Passo 2 - Crie a rota de listagem de usuários no backend</h3>
+    <p>Logo abaixo da rota de cadastro no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para listar todos os usuários.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/usuarios"</span>, methods=[<span class="st">"GET"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">listar_usuarios</span>():
+
+    <span class="cm"># Verifica se o usuário logado é administrador.</span>
+    usuario_logado = <span class="fn">get_jwt</span>()
+    <span class="kw">if not</span> usuario_logado[<span class="st">"administrador"</span>]:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Roda o SQL para buscar todos os usuários.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id, nome, cpf, email, telefone, data_nascimento, administrador FROM usuario"</span>)
+    usuarios = cursor.<span class="fn">fetchall</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>(usuarios), <span class="num">200</span></pre>
+    </div>
+
+    <h3>Passo 3 - Crie a rota de edição de usuário no backend</h3>
+    <p>Logo abaixo da rota de listagem no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para editar um usuário.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/usuarios/&lt;int:id&gt;"</span>, methods=[<span class="st">"PUT"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">editar_usuario</span>(id):
+
+    <span class="cm"># Verifica se o usuário logado é administrador.</span>
+    usuario_logado = <span class="fn">get_jwt</span>()
+    <span class="kw">if not</span> usuario_logado[<span class="st">"administrador"</span>]:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Recebe os dados do frontend.</span>
+    dados = request.<span class="fn">get_json</span>()
+    nome = dados.<span class="fn">get</span>(<span class="st">"nome"</span>)
+    cpf = dados.<span class="fn">get</span>(<span class="st">"cpf"</span>)
+    email = dados.<span class="fn">get</span>(<span class="st">"email"</span>)
+    senha = dados.<span class="fn">get</span>(<span class="st">"senha"</span>)
+    telefone = dados.<span class="fn">get</span>(<span class="st">"telefone"</span>)
+    data_nascimento = dados.<span class="fn">get</span>(<span class="st">"data_nascimento"</span>)
+    administrador = dados.<span class="fn">get</span>(<span class="st">"administrador"</span>, <span class="kw">False</span>)
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Verifica se o CPF ou e-mail já estão cadastrados em outro usuário.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id FROM usuario WHERE (cpf = %s OR email = %s) AND id != %s"</span>, (cpf, email, id))
+    <span class="kw">if</span> cursor.<span class="fn">fetchone</span>():
+        cursor.<span class="fn">close</span>()
+        link.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"CPF ou e-mail já cadastrados em outro usuário..."</span>}), <span class="num">409</span>
+
+    <span class="cm"># Se uma nova senha foi enviada, criptografa. Caso contrário, mantém a atual.</span>
+    <span class="kw">if</span> senha:
+        senha_hash = <span class="fn">generate_password_hash</span>(senha)
+        cursor.<span class="fn">execute</span>(<span class="st">"""</span>
+<span class="st">            UPDATE usuario SET nome = %s, cpf = %s, email = %s, senha = %s, telefone = %s, data_nascimento = %s, administrador = %s</span>
+<span class="st">            WHERE id = %s</span>
+<span class="st">        """</span>, (nome, cpf, email, senha_hash, telefone, data_nascimento, administrador, id))
+    <span class="kw">else</span>:
+        cursor.<span class="fn">execute</span>(<span class="st">"""</span>
+<span class="st">            UPDATE usuario SET nome = %s, cpf = %s, email = %s, telefone = %s, data_nascimento = %s, administrador = %s</span>
+<span class="st">            WHERE id = %s</span>
+<span class="st">        """</span>, (nome, cpf, email, telefone, data_nascimento, administrador, id))
+
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Usuário editado com sucesso!"</span>}), <span class="num">200</span></pre>
+    </div>
+
+    <h3>Passo 4 - Crie a rota de exclusão de usuário no backend</h3>
+    <p>Logo abaixo da rota de edição no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para excluir um usuário.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/usuarios/&lt;int:id&gt;"</span>, methods=[<span class="st">"DELETE"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">excluir_usuario</span>(id):
+
+    <span class="cm"># Verifica se o usuário logado é administrador.</span>
+    usuario_logado = <span class="fn">get_jwt</span>()
+    <span class="kw">if not</span> usuario_logado[<span class="st">"administrador"</span>]:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Roda o SQL para excluir o usuário.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"DELETE FROM usuario WHERE id = %s"</span>, (id,))
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Usuário excluído com sucesso!"</span>}), <span class="num">200</span></pre>
+    </div>
+
+    <h3>Passo 5 - Compreender as quatro rotas criadas</h3>
+    <ul class="bullets">
+      <li><strong>get_jwt()["administrador"]</strong> é usado em todas as rotas para garantir que apenas usuários administradores possam gerenciar outros usuários.</li>
+      <li><strong>SELECT id FROM usuario WHERE cpf = %s OR email = %s</strong> evita que dois usuários sejam cadastrados com o mesmo CPF ou e-mail, retornando <code>409</code> (conflito) caso já exista um registro igual no banco de dados.</li>
+      <li>Na rota de edição de usuário, a verificação de duplicidade usa <code>AND id != %s</code>, para não bloquear a edição de um usuário comparando ele com ele mesmo.</li>
+      <li>Na rota de edição de usuário, a senha só é atualizada <strong>se uma nova senha foi enviada</strong>. Isso evita que o usuário precise digitar a senha de novo só para editar o nome ou o telefone, por exemplo.</li>
+      <li><strong>403</strong> é o código de HTTP usado quando o usuário está autenticado, mas não tem permissão para aquela ação (acesso negado).</li>
+    </ul>
+
+    <h3>Passo 6 - Crie a tela de usuários no frontend</h3>
+    <p>Na pasta de <code>templates/</code>, crie um arquivo chamado de <code>usuarios.html</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">html — usuarios.html<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="pt-BR"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"/&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"/&gt;
+  &lt;title&gt;Usuários - Taskan&lt;/title&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/&gt;
+  &lt;link rel="stylesheet" href="../static/css/styles.css"/&gt;
+&lt;/head&gt;
+&lt;body&gt;
+
+  &lt;!-- Sidebar --&gt;
+  &lt;div class="sidebar d-flex flex-column p-3"&gt;
+    &lt;div class="sidebar-logo mb-4"&gt;
+      &lt;img src="../static/images/Logotipo do Sidebar - Taskan.png" alt="Logotipo - Taskan" class="logo-sidebar"/&gt;
+    &lt;/div&gt;
+    &lt;nav class="nav flex-column gap-1"&gt;
+      &lt;a href="dashboard.html" class="nav-link"&gt;Dashboard&lt;/a&gt;
+      &lt;a href="usuarios.html" class="nav-link active"&gt;Usuários&lt;/a&gt;
+      &lt;a href="status_tarefa.html" class="nav-link"&gt;Status de Tarefas&lt;/a&gt;
+      &lt;a href="tarefas.html" class="nav-link"&gt;Tarefas&lt;/a&gt;
+    &lt;/nav&gt;
+    &lt;div class="mt-auto"&gt;
+      &lt;button class="btn btn-outline-light w-100" onclick="fazer_logout()"&gt;Sair&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Conteúdo principal --&gt;
+  &lt;div class="conteudo"&gt;
+
+    &lt;h4 class="mb-4"&gt;Usuários&lt;/h4&gt;
+
+    &lt;!-- Formulário de cadastro/edição de dados --&gt;
+    &lt;div class="card shadow-sm mb-4"&gt;
+      &lt;div class="card-body"&gt;
+
+        &lt;h6 class="mb-3" id="titulo-formulario"&gt;&lt;b&gt;Registrar Novo Usuário&lt;/b&gt;&lt;/h6&gt;
+
+        &lt;input type="hidden" id="id-usuario"/&gt;
+
+        &lt;div class="row g-3"&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;Nome&lt;/label&gt;
+            &lt;input type="text" class="form-control" id="nome" placeholder="Nome completo"/&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;CPF&lt;/label&gt;
+            &lt;input type="text" class="form-control" id="cpf" placeholder="000.000.000-00"/&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;E-mail&lt;/label&gt;
+            &lt;input type="email" class="form-control" id="email" placeholder="email@exemplo.com"/&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;Telefone&lt;/label&gt;
+            &lt;input type="text" class="form-control" id="telefone" placeholder="(00) 00000-0000"/&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-12"&gt;
+            &lt;label class="form-label"&gt;Data de Nascimento&lt;/label&gt;
+            &lt;input type="date" class="form-control" id="data-nascimento"/&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;Senha&lt;/label&gt;
+            &lt;input type="password" class="form-control" id="senha" placeholder="Senha"/&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;Confirmar Senha&lt;/label&gt;
+            &lt;input type="password" class="form-control" id="confirmar-senha" placeholder="Confirme a senha"/&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-12"&gt;
+            &lt;div class="form-check"&gt;
+              &lt;input type="checkbox" class="form-check-input" id="administrador"/&gt;
+              &lt;label class="form-check-label"&gt;Administrador&lt;/label&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div class="mt-3 mb-3 d-flex gap-2"&gt;
+          &lt;button class="btn btn-primary" onclick="salvar_usuario()"&gt;Salvar&lt;/button&gt;
+          &lt;button class="btn btn-secondary" onclick="cancelar()"&gt;Cancelar&lt;/button&gt;
+        &lt;/div&gt;
+
+        &lt;div id="mensagem" class="mt-3"&gt;&lt;/div&gt;
+
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Tabela de usuários --&gt;
+    &lt;div class="card shadow-sm"&gt;
+      &lt;div class="card-body"&gt;
+        &lt;table class="table table-hover align-middle mb-0"&gt;
+          &lt;thead&gt;
+            &lt;tr&gt;
+              &lt;th&gt;Nome&lt;/th&gt;
+              &lt;th&gt;CPF&lt;/th&gt;
+              &lt;th&gt;E-mail&lt;/th&gt;
+              &lt;th&gt;Telefone&lt;/th&gt;
+              &lt;th&gt;Administrador&lt;/th&gt;
+              &lt;th&gt;Ações&lt;/th&gt;
+            &lt;/tr&gt;
+          &lt;/thead&gt;
+          &lt;tbody id="tabela-usuarios"&gt;
+
+            &lt;!-- Linhas geradas dinamicamente pelo JS --&gt;
+
+          &lt;/tbody&gt;
+        &lt;/table&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+  &lt;/div&gt;
+
+  &lt;!-- Vinculo com os arquivos de JS --&gt;
+  &lt;script src="../static/js/utilidades.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/usuarios.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/dashboard.js"&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que o dashboard.js é carregado nesta página de HTML?</strong>
+      O <code>dashboard.js</code> contém a função <code>fazer_logout()</code>, usada no botão de <code>Sair</code> da sidebar, e também a verificação de proteção de rota. Por isso ele é carregado em todas as páginas internas de HTML do To do List - Kanban, não só no painel de gerenciamento.
+    </div>
+
+    <h3>Passo 7 - Crie o JavaScript das requisições de usuários para o backend</h3>
+    <p>Na pasta de <code>js/</code> que fica dentro de <code>static/</code>, crie um arquivo chamado de <code>usuarios.js</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">javascript — usuarios.js<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">// Verifica se o usuário está logado ao carregar o HTML.</span>
+<span class="kw">if</span> (!localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)) {
+    window.location.href = <span class="st">"index.html"</span>;
+}
+
+<span class="cm">// Carrega a lista de usuários ao abrir o HTML.</span>
+<span class="fn">listar_usuarios</span>();
+
+
+<span class="cm">// Função para salvar um novo usuário ou editar um existente.</span>
+<span class="kw">async function</span> <span class="fn">salvar_usuario</span>() {
+
+    <span class="cm">// Captura os dados do formulário.</span>
+    <span class="kw">const</span> id = document.<span class="fn">getElementById</span>(<span class="st">"id-usuario"</span>).value;
+    <span class="kw">const</span> nome = document.<span class="fn">getElementById</span>(<span class="st">"nome"</span>).value;
+    <span class="kw">const</span> cpf = document.<span class="fn">getElementById</span>(<span class="st">"cpf"</span>).value;
+    <span class="kw">const</span> email = document.<span class="fn">getElementById</span>(<span class="st">"email"</span>).value;
+    <span class="kw">const</span> senha = document.<span class="fn">getElementById</span>(<span class="st">"senha"</span>).value;
+    <span class="kw">const</span> confirmar_senha = document.<span class="fn">getElementById</span>(<span class="st">"confirmar-senha"</span>).value;
+    <span class="kw">const</span> telefone = document.<span class="fn">getElementById</span>(<span class="st">"telefone"</span>).value;
+    <span class="kw">const</span> data_nascimento = document.<span class="fn">getElementById</span>(<span class="st">"data-nascimento"</span>).value;
+    <span class="kw">const</span> administrador = document.<span class="fn">getElementById</span>(<span class="st">"administrador"</span>).checked;
+    <span class="kw">const</span> mensagem = document.<span class="fn">getElementById</span>(<span class="st">"mensagem"</span>);
+
+    <span class="cm">// Verifica se as senhas coincidem (somente se uma senha foi digitada).</span>
+    <span class="kw">if</span> (senha !== confirmar_senha) {
+
+        mensagem.className = <span class="st">"alert alert-danger"</span>;
+        mensagem.textContent = <span class="st">"As senhas não coincidem..."</span>;
+
+        <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+            mensagem.className = <span class="st">""</span>;
+            mensagem.textContent = <span class="st">""</span>;
+        }, <span class="num">4000</span>);
+        <span class="kw">return</span>;
+    }
+
+    <span class="kw">try</span> {
+
+        <span class="cm">// Se houver ID, é uma edição. Caso contrário, é um cadastro.</span>
+        <span class="kw">const</span> metodo = id ? <span class="st">"PUT"</span> : <span class="st">"POST"</span>;
+        <span class="kw">const</span> url = id ? `http://127.0.0.1:5000/api/usuarios/${id}` : <span class="st">"http://127.0.0.1:5000/api/usuarios"</span>;
+
+        <span class="cm">// Envia os dados para o backend.</span>
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(url, {
+            method: metodo,
+            headers: {
+                <span class="st">"Content-Type"</span>: <span class="st">"application/json"</span>,
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            },
+            body: JSON.<span class="fn">stringify</span>({ nome, cpf, email, senha, telefone, data_nascimento, administrador })
+        });
+
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+
+        <span class="cm">// Verifica se a operação foi bem-sucedida.</span>
+        <span class="kw">if</span> (resposta.ok) {
+
+            mensagem.className = <span class="st">"alert alert-success"</span>;
+            mensagem.textContent = dados.mensagem;
+            <span class="fn">cancelar</span>();
+            <span class="fn">listar_usuarios</span>();
+
+            <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+                mensagem.className = <span class="st">""</span>;
+                mensagem.textContent = <span class="st">""</span>;
+            }, <span class="num">4000</span>);
+
+        } <span class="kw">else</span> {
+
+            mensagem.className = <span class="st">"alert alert-danger"</span>;
+            mensagem.textContent = dados.erro;
+
+            <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+                mensagem.className = <span class="st">""</span>;
+                mensagem.textContent = <span class="st">""</span>;
+            }, <span class="num">4000</span>);
+
+        }
+
+    } <span class="kw">catch</span> {
+
+        mensagem.className = <span class="st">"alert alert-warning"</span>;
+        mensagem.textContent = <span class="st">"Não foi possível atender sua requisição no momento. Tente mais tarde..."</span>;
+
+        <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+            mensagem.className = <span class="st">""</span>;
+            mensagem.textContent = <span class="st">""</span>;
+        }, <span class="num">4000</span>);
+
+    }
+
+}
+
+
+<span class="cm">// Função para listar todos os usuários na tabela.</span>
+<span class="kw">async function</span> <span class="fn">listar_usuarios</span>() {
+
+    <span class="kw">try</span> {
+
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/usuarios"</span>, {
+            method: <span class="st">"GET"</span>,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            }
+        });
+
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+        <span class="kw">const</span> tabela = document.<span class="fn">getElementById</span>(<span class="st">"tabela-usuarios"</span>);
+        tabela.innerHTML = <span class="st">""</span>;
+
+        dados.<span class="fn">forEach</span>(<span class="kw">function</span> (usuario) {
+
+            tabela.innerHTML += `
+                &lt;tr&gt;
+                    &lt;td&gt;${usuario.nome}&lt;/td&gt;
+                    &lt;td&gt;${usuario.cpf}&lt;/td&gt;
+                    &lt;td&gt;${usuario.email}&lt;/td&gt;
+                    &lt;td&gt;${usuario.telefone || <span class="st">"-"</span>}&lt;/td&gt;
+                    &lt;td&gt;${usuario.administrador ? <span class="st">"Sim"</span> : <span class="st">"Não"</span>}&lt;/td&gt;
+                    &lt;td&gt;
+                        &lt;button class="btn btn-sm btn-warning" onclick="editar_usuario(${usuario.id}, '${usuario.nome}', '${usuario.cpf}', '${usuario.email}', '${usuario.telefone || <span class="st">""</span>}', '${usuario.data_nascimento || <span class="st">""</span>}', ${usuario.administrador})"&gt;&lt;i class="bi bi-pencil"&gt;&lt;/i&gt;&lt;/button&gt;
+                        &lt;button class="btn btn-sm btn-danger" onclick="excluir_usuario(${usuario.id})"&gt;&lt;i class="bi bi-trash"&gt;&lt;/i&gt;&lt;/button&gt;
+                    &lt;/td&gt;
+                &lt;/tr&gt;
+            `;
+
+        });
+
+    } <span class="kw">catch</span> {
+
+        console.<span class="fn">error</span>(<span class="st">"Não foi possível carregar os usuários..."</span>);
+
+    }
+
+}
+
+
+<span class="cm">// Função para preencher o formulário com os dados do usuário a ser editado.</span>
+<span class="kw">function</span> <span class="fn">editar_usuario</span>(id, nome, cpf, email, telefone, data_nascimento, administrador) {
+
+    <span class="cm">// Preenche os campos do formulário.</span>
+    document.<span class="fn">getElementById</span>(<span class="st">"id-usuario"</span>).value = id;
+    document.<span class="fn">getElementById</span>(<span class="st">"nome"</span>).value = nome;
+    document.<span class="fn">getElementById</span>(<span class="st">"cpf"</span>).value = cpf;
+    document.<span class="fn">getElementById</span>(<span class="st">"email"</span>).value = email;
+    document.<span class="fn">getElementById</span>(<span class="st">"telefone"</span>).value = telefone;
+
+    <span class="cm">// Converte a data recebida para o formato yyyy-MM-dd, independente do formato original.</span>
+    <span class="kw">if</span> (data_nascimento) {
+        <span class="kw">const</span> data = <span class="kw">new</span> <span class="nb">Date</span>(data_nascimento);
+        document.<span class="fn">getElementById</span>(<span class="st">"data-nascimento"</span>).value = data.<span class="fn">toISOString</span>().<span class="fn">split</span>(<span class="st">"T"</span>)[<span class="num">0</span>];
+    } <span class="kw">else</span> {
+        document.<span class="fn">getElementById</span>(<span class="st">"data-nascimento"</span>).value = <span class="st">""</span>;
+    }
+
+    document.<span class="fn">getElementById</span>(<span class="st">"administrador"</span>).checked = administrador;
+
+    <span class="cm">// Atualiza o título do formulário.</span>
+    document.<span class="fn">getElementById</span>(<span class="st">"titulo-formulario"</span>).innerHTML = <span class="st">"&lt;b&gt;Editar Usuário&lt;/b&gt;"</span>;
+
+}
+
+
+<span class="cm">// Função para excluir um usuário.</span>
+<span class="kw">async function</span> <span class="fn">excluir_usuario</span>(id) {
+
+    <span class="cm">// Solicita confirmação antes de excluir.</span>
+    <span class="kw">if</span> (!<span class="fn">confirm</span>(<span class="st">"Tem certeza que deseja excluir este usuário?"</span>)) <span class="kw">return</span>;
+
+    <span class="kw">try</span> {
+
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(`http://127.0.0.1:5000/api/usuarios/${id}`, {
+            method: <span class="st">"DELETE"</span>,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            }
+        });
+
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+
+        <span class="kw">if</span> (resposta.ok) {
+            <span class="fn">listar_usuarios</span>();
+        } <span class="kw">else</span> {
+            <span class="fn">alert</span>(dados.erro);
+        }
+
+    } <span class="kw">catch</span> {
+        <span class="fn">alert</span>(<span class="st">"Não foi possível atender sua requisição no momento. Tente mais tarde..."</span>);
+    }
+
+}
+
+
+<span class="cm">// Função para cancelar e limpar o formulário.</span>
+<span class="kw">function</span> <span class="fn">cancelar</span>() {
+
+    <span class="cm">// Limpa todos os campos do formulário.</span>
+    document.<span class="fn">getElementById</span>(<span class="st">"id-usuario"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"nome"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"cpf"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"email"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"senha"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"confirmar-senha"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"telefone"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"data-nascimento"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"administrador"</span>).checked = <span class="kw">false</span>;
+
+    <span class="cm">// Restaura o título do formulário.</span>
+    document.<span class="fn">getElementById</span>(<span class="st">"titulo-formulario"</span>).innerHTML = <span class="st">"&lt;b&gt;Registrar Novo Usuário&lt;/b&gt;"</span>;
+
+}</pre>
+    </div>
+
+    <div class="callout warn">
+      <strong>Correção do caminho de redirecionamento</strong>
+      A linha <code>if (!localStorage.getItem("token"))</code> redireciona para <code>"index.html"</code>, e não para <code>"../templates/index.html"</code>, pois o <code>usuarios.html</code> já está dentro da pasta <code>templates/</code>. Esse é o mesmo tipo de erro de caminho relativo que solicitamos atenção no <code>index.js</code> na etapa anterior.
+    </div>
+
+    <h3>Passo 8 - Compreender as requisições de usuários para o backend</h3>
+    <ul class="bullets">
+      <li><strong>const metodo = id ? "PUT" : "POST"</strong> decide automaticamente se a operação é um cadastro ou uma edição, com base na presença do campo oculto <code>id-usuario</code>.</li>
+      <li>A verificação <code>if (senha !== confirmar_senha)</code> acontece inteiramente no frontend, antes de qualquer requisição ser enviada ao backend.</li>
+      <li><strong>editar_usuario()</strong> recebe os dados diretamente como parâmetros da função, em vez de buscar novamente no backend, o que evita uma requisição extra desnecessária.</li>
+      <li>A conversão de data com <code>new Date(data_nascimento).toISOString().split("T")[0]</code> é necessária porque o MySQL pode retornar a data em formatos diferentes, e o campo <code>&lt;input type="date"&gt;</code> do HTML só aceita o formato <code>yyyy-MM-dd</code>.</li>
+    </ul>
+
+    <h3>Passo 9 - Estrutura atual de pastas do projeto</h3>
+    <p>Até este ponto, sua pasta de projeto deve estar organizada assim:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">estrutura de pastas<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>Kanban com SQL Puro/
+│
+├── app.py
+├── database.py
+├── .env
+│
+├── static/
+│   └── js/
+│       ├── utilidades.js
+│       ├── index.js
+│       ├── dashboard.js
+│       └── usuarios.js
+│
+└── templates/
+    ├── index.html
+    ├── dashboard.html
+    └── usuarios.html</pre>
+    </div>
+
+    <h3>Passo 10 - Teste as requisições de usuários para o backend</h3>
+    <p>Execute o arquivo de backend (<code>python app.py</code>), faça login com o administrador padrão e acesse a tela de <code>usuarios.html</code> pelo menu lateral. Cadastre um novo usuário, edite-o, e por fim exclua-o.</p>
+
+    <div class="callout tip">
+      <strong>Esperado nesta etapa</strong>
+      Apenas usuários com <code>administrador</code> marcado conseguem acessar essa tela com sucesso. Se você cadastrar um usuário sem marcar essa opção e fizer login com ele, as requisições para <code>/api/usuarios</code> devem retornar <code>403</code> (acesso negado).
+    </div>
+
+    <div class="footer-nav"></div>
+
+</section>
+<section id="etapa-4">
+
+    <span class="etapa-tag">ETAPA 4 DE 6</span>
+    <h1>Status de Tarefas</h1>
+    <p class="intro">Antes de criarmos as tarefas em si, precisamos de um lugar para definir os status que elas podem assumir (A Fazer, Em Andamento ou Concluída). Vamos criar o segundo CRUD (Create, Read, Update and Delete) completo do To do List - Kanban, que é o de status de tarefas.</p>
+
+    <h2>Passo a Passo</h2>
+    <p>Primeiro vamos criar as quatro rotas de status de tarefas no backend, depois a tela de status de tarefas no frontend, e por fim o JavaScript que conecta tudo isso.</p>
+
+    <h3>Passo 1 - Crie a rota de cadastro de status de tarefa no backend</h3>
+    <p>No arquivo chamado de <code>app.py</code>, logo após a rota de exclusão de usuário, adicione a rota exibida abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para cadastrar um novo status de tarefa.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/status-tarefa"</span>, methods=[<span class="st">"POST"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">cadastrar_status_tarefa</span>():
+
+    <span class="cm"># Verifica se o usuário logado é administrador.</span>
+    usuario_logado = <span class="fn">get_jwt</span>()
+    <span class="kw">if not</span> usuario_logado[<span class="st">"administrador"</span>]:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Recebe os dados do frontend.</span>
+    dados = request.<span class="fn">get_json</span>()
+    nome = dados.<span class="fn">get</span>(<span class="st">"nome"</span>)
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Verifica se o nome já está cadastrado.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id FROM status_tarefa WHERE nome = %s"</span>, (nome,))
+    <span class="kw">if</span> cursor.<span class="fn">fetchone</span>():
+        cursor.<span class="fn">close</span>()
+        link.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Status de tarefa já cadastrado..."</span>}), <span class="num">409</span>
+
+    <span class="cm"># Roda o SQL para cadastrar o status de tarefa.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"INSERT INTO status_tarefa (nome) VALUES (%s)"</span>, (nome,))
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Status de tarefa cadastrado com sucesso!"</span>}), <span class="num">201</span></pre>
+    </div>
+
+    <h3>Passo 2 - Crie a rota de listagem de status de tarefas no backend</h3>
+    <p>Logo abaixo da rota de cadastro de status de tarefa no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para listar todos os status de tarefas.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/status-tarefa"</span>, methods=[<span class="st">"GET"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">listar_status_tarefa</span>():
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Roda o SQL para buscar todos os status de tarefas.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id, nome FROM status_tarefa"</span>)
+    status_tarefas = cursor.<span class="fn">fetchall</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>(status_tarefas), <span class="num">200</span></pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que essa rota não verifica administrador?</strong>
+      Diferente das rotas de usuários, a listagem de status de tarefas precisa ser acessada por qualquer usuário logado, não só administradores. Isso porque ela vai ser usada para preencher o campo de seleção de status no formulário de tarefas, que qualquer usuário pode cadastrar.
+    </div>
+
+    <h3>Passo 3 - Crie a rota de edição de status de tarefa no backend</h3>
+    <p>Logo abaixo da rota de listagem de status de tarefa no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para editar um status de tarefa.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/status-tarefa/&lt;int:id&gt;"</span>, methods=[<span class="st">"PUT"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">editar_status_tarefa</span>(id):
+
+    <span class="cm"># Verifica se o usuário logado é administrador.</span>
+    usuario_logado = <span class="fn">get_jwt</span>()
+    <span class="kw">if not</span> usuario_logado[<span class="st">"administrador"</span>]:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Recebe os dados do frontend.</span>
+    dados = request.<span class="fn">get_json</span>()
+    nome = dados.<span class="fn">get</span>(<span class="st">"nome"</span>)
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Verifica se o nome já está cadastrado em outro status.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id FROM status_tarefa WHERE nome = %s AND id != %s"</span>, (nome, id))
+    <span class="kw">if</span> cursor.<span class="fn">fetchone</span>():
+        cursor.<span class="fn">close</span>()
+        link.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Status de tarefa já cadastrado..."</span>}), <span class="num">409</span>
+
+    <span class="cm"># Roda o SQL para editar o status de tarefa.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"UPDATE status_tarefa SET nome = %s WHERE id = %s"</span>, (nome, id))
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Status de tarefa editado com sucesso!"</span>}), <span class="num">200</span></pre>
+    </div>
+
+    <h3>Passo 4 - Crie a rota de exclusão de status de tarefa no backend</h3>
+    <p>Logo abaixo da rota de edição de status de tarefa no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para excluir um status de tarefa.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/status-tarefa/&lt;int:id&gt;"</span>, methods=[<span class="st">"DELETE"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">excluir_status_tarefa</span>(id):
+
+    <span class="cm"># Verifica se o usuário logado é administrador.</span>
+    usuario_logado = <span class="fn">get_jwt</span>()
+    <span class="kw">if not</span> usuario_logado[<span class="st">"administrador"</span>]:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Verifica se existem tarefas vinculadas a esse status.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id FROM tarefa WHERE id_status_tarefa = %s"</span>, (id,))
+    <span class="kw">if</span> cursor.<span class="fn">fetchone</span>():
+        cursor.<span class="fn">close</span>()
+        link.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Não é possível excluir, pois existem tarefas vinculadas a este status..."</span>}), <span class="num">409</span>
+
+    <span class="cm"># Roda o SQL para excluir o status de tarefa.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"DELETE FROM status_tarefa WHERE id = %s"</span>, (id,))
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Status de tarefa excluído com sucesso!"</span>}), <span class="num">200</span></pre>
+    </div>
+
+    <h3>Passo 5 - Compreender as quatro rotas criadas</h3>
+    <ul class="bullets">
+      <li>As rotas de cadastro, edição e exclusão de status de tarefa exigem <code>administrador</code>, mas a rota de listagem é aberta para qualquer usuário logado.</li>
+      <li><strong>SELECT id FROM status_tarefa WHERE nome = %s</strong> evita que dois status de tarefa sejam cadastrados com o mesmo nome, retornando <code>409</code> caso já exista.</li>
+      <li>Antes de excluir um status de tarefa, a rota verifica (<strong>SELECT id FROM tarefa WHERE id_status_tarefa = %s</strong>). Se existir ao menos uma tarefa usando esse status de tarefa, a exclusão é bloqueada com <code>409</code>, em vez de deixar o MySQL estourar um erro de chave estrangeira (que resultaria em <code>500</code>).</li>
+      <li><strong>409</strong> é o código de HTTP usado para indicar conflito, seja por duplicidade de nome, seja por dependência de outros registros.</li>
+    </ul>
+
+    <h3>Passo 6 - Crie a tela de status de tarefas no frontend</h3>
+    <p>Na pasta de <code>templates/</code>, crie um arquivo chamado de <code>status_tarefa.html</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">html — status_tarefa.html<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="pt-BR"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"/&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"/&gt;
+  &lt;title&gt;Status de Tarefas - Taskan&lt;/title&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/&gt;
+  &lt;link rel="stylesheet" href="../static/css/styles.css"/&gt;
+&lt;/head&gt;
+&lt;body&gt;
+
+  &lt;!-- Sidebar --&gt;
+  &lt;div class="sidebar d-flex flex-column p-3"&gt;
+    &lt;div class="sidebar-logo mb-4"&gt;
+      &lt;img src="../static/images/Logotipo do Sidebar - Taskan.png" alt="Logotipo - Taskan" class="logo-sidebar"/&gt;
+    &lt;/div&gt;
+    &lt;nav class="nav flex-column gap-1"&gt;
+      &lt;a href="dashboard.html" class="nav-link"&gt;Dashboard&lt;/a&gt;
+      &lt;a href="usuarios.html" class="nav-link"&gt;Usuários&lt;/a&gt;
+      &lt;a href="status_tarefa.html" class="nav-link active"&gt;Status de Tarefas&lt;/a&gt;
+      &lt;a href="tarefas.html" class="nav-link"&gt;Tarefas&lt;/a&gt;
+    &lt;/nav&gt;
+    &lt;div class="mt-auto"&gt;
+      &lt;button class="btn btn-outline-light w-100" onclick="fazer_logout()"&gt;Sair&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Conteúdo principal --&gt;
+  &lt;div class="conteudo"&gt;
+
+    &lt;h4 class="mb-4"&gt;Status de Tarefas&lt;/h4&gt;
+
+    &lt;!-- Formulário de cadastro/edição de dados --&gt;
+    &lt;div class="card shadow-sm mb-4"&gt;
+      &lt;div class="card-body"&gt;
+
+        &lt;h6 class="mb-3" id="titulo-formulario"&gt;&lt;b&gt;Registrar Novo Status&lt;/b&gt;&lt;/h6&gt;
+
+        &lt;input type="hidden" id="id-status-tarefa"/&gt;
+
+        &lt;div class="row g-3"&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;Nome&lt;/label&gt;
+            &lt;input type="text" class="form-control" id="nome" placeholder="Digite o nome do novo Status de Tarefas"/&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div class="mt-3 mb-3 d-flex gap-2"&gt;
+          &lt;button class="btn btn-primary" onclick="salvar_status_tarefa()"&gt;Salvar&lt;/button&gt;
+          &lt;button class="btn btn-secondary" onclick="cancelar()"&gt;Cancelar&lt;/button&gt;
+        &lt;/div&gt;
+
+        &lt;div id="mensagem" class="mt-3"&gt;&lt;/div&gt;
+
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Tabela de status das tarefas --&gt;
+    &lt;div class="card shadow-sm"&gt;
+      &lt;div class="card-body"&gt;
+        &lt;table class="table table-hover align-middle mb-0"&gt;
+          &lt;thead&gt;
+            &lt;tr&gt;
+              &lt;th&gt;Nome&lt;/th&gt;
+              &lt;th&gt;Ações&lt;/th&gt;
+            &lt;/tr&gt;
+          &lt;/thead&gt;
+          &lt;tbody id="tabela-status-tarefa"&gt;
+
+            &lt;!-- Linhas geradas dinamicamente pelo JS --&gt;
+
+          &lt;/tbody&gt;
+        &lt;/table&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+  &lt;/div&gt;
+
+  &lt;!-- Vinculo com os arquivos de JS --&gt;
+  &lt;script src="../static/js/utilidades.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/status_tarefa.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/dashboard.js"&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que esse formulário só tem um campo?</strong>
+      Diferente da tela de usuários, a tabela de <code>status_tarefa</code> tem apenas <code>id</code> e <code>nome</code>. Por isso o formulário também é mais simples, com um único campo de texto.
+    </div>
+
+    <h3>Passo 7 - Crie o JavaScript das requisições de status de tarefas para o backend</h3>
+    <p>Na pasta de <code>js/</code> que fica dentro de <code>static/</code>, crie um arquivo chamado de <code>status_tarefa.js</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">javascript — status_tarefa.js<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">// Verifica se o usuário está logado ao carregar o HTML.</span>
+<span class="kw">if</span> (!localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)) {
+    window.location.href = <span class="st">"index.html"</span>;
+}
+
+<span class="cm">// Carrega a lista de status de tarefas ao abrir o HTML.</span>
+<span class="fn">listar_status_tarefa</span>();
+                       
+<span class="cm">// Função para salvar um novo status de tarefa ou editar um existente.</span>
+<span class="kw">async function</span> <span class="fn">salvar_status_tarefa</span>() {
+
+    <span class="kw">const</span> id = document.<span class="fn">getElementById</span>(<span class="st">"id-status-tarefa"</span>).value;
+    <span class="kw">const</span> nome = document.<span class="fn">getElementById</span>(<span class="st">"nome"</span>).value;
+    <span class="kw">const</span> mensagem = document.<span class="fn">getElementById</span>(<span class="st">"mensagem"</span>);
+
+    <span class="kw">try</span> {
+
+        <span class="cm">// Se houver ID, é uma edição. Caso contrário, é um cadastro.</span>
+        <span class="kw">const</span> metodo = id ? <span class="st">"PUT"</span> : <span class="st">"POST"</span>;
+        <span class="kw">const</span> url = id ? `http://127.0.0.1:5000/api/status-tarefa/${id}` : <span class="st">"http://127.0.0.1:5000/api/status-tarefa"</span>;
+
+        <span class="cm">// Faz uma requisição para cadastro ou edição de dados no backend.</span>
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(url, {
+            method: metodo,
+            headers: {
+                <span class="st">"Content-Type"</span>: <span class="st">"application/json"</span>,
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            },
+            body: JSON.<span class="fn">stringify</span>({ nome })
+        });
+
+        <span class="cm">// Recupera os dados enviados pelo backend.</span>
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+
+        <span class="kw">if</span> (resposta.ok) {
+
+            <span class="cm">// Exibe a mensagem de sucesso do backend.</span>
+            mensagem.className = <span class="st">"alert alert-success"</span>;
+            mensagem.textContent = dados.mensagem;
+            <span class="fn">cancelar</span>();
+            <span class="fn">listar_status_tarefa</span>();
+
+            <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+                mensagem.className = <span class="st">""</span>;
+                mensagem.textContent = <span class="st">""</span>;
+            }, <span class="num">4000</span>);
+
+        } <span class="kw">else</span> {
+
+            <span class="cm">// Exibe uma mensagem de erro no backend.</span>
+            mensagem.className = <span class="st">"alert alert-danger"</span>;
+            mensagem.textContent = dados.erro;
+
+            <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+                mensagem.className = <span class="st">""</span>;
+                mensagem.textContent = <span class="st">""</span>;
+            }, <span class="num">4000</span>);
+
+        }
+
+    } <span class="kw">catch</span> {
+
+        <span class="cm">// Exibe uma mensagem de falha no atendimento a requisição.</span>
+        mensagem.className = <span class="st">"alert alert-warning"</span>;
+        mensagem.textContent = <span class="st">"Não foi possível atender sua requisição no momento. Tente mais tarde..."</span>;
+
+        <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+            mensagem.className = <span class="st">""</span>;
+            mensagem.textContent = <span class="st">""</span>;
+        }, <span class="num">4000</span>);
+
+    }
+
+}
+
+<span class="cm">// Função para listar todos os status de tarefas na tabela.</span>
+<span class="kw">async function</span> <span class="fn">listar_status_tarefa</span>() {
+
+    <span class="kw">try</span> {
+
+        <span class="cm">// Faz uma requisição para o backend.</span>
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/status-tarefa"</span>, {
+            method: <span class="st">"GET"</span>,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            }
+        });
+
+        <span class="cm">// Recupera os dados retornados pelo backend.</span>
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+        <span class="kw">const</span> tabela = document.<span class="fn">getElementById</span>(<span class="st">"tabela-status-tarefa"</span>);
+        tabela.innerHTML = <span class="st">""</span>;
+
+        <span class="cm">// Preenche a tabela com os dados retornados pelo backend.</span>
+        dados.<span class="fn">forEach</span>(<span class="kw">function</span> (status) {
+
+            tabela.innerHTML += `
+                &lt;tr&gt;
+                    &lt;td&gt;${status.nome}&lt;/td&gt;
+                    &lt;td&gt;
+                        &lt;button class="btn btn-sm btn-warning" onclick="editar_status_tarefa(${status.id}, '${status.nome}')"&gt;&lt;i class="bi bi-pencil"&gt;&lt;/i&gt;&lt;/button&gt;
+                        &lt;button class="btn btn-sm btn-danger" onclick="excluir_status_tarefa(${status.id})"&gt;&lt;i class="bi bi-trash"&gt;&lt;/i&gt;&lt;/button&gt;
+                    &lt;/td&gt;
+                &lt;/tr&gt;
+            `;
+
+        });
+
+    } <span class="kw">catch</span> {
+        console.<span class="fn">error</span>(<span class="st">"Não foi possível carregar os status de tarefas..."</span>);
+    }
+
+}
+
+<span class="cm">// Função para preencher o formulário com os dados do status a ser editado.</span>
+<span class="kw">function</span> <span class="fn">editar_status_tarefa</span>(id, nome) {
+
+    document.<span class="fn">getElementById</span>(<span class="st">"id-status-tarefa"</span>).value = id;
+    document.<span class="fn">getElementById</span>(<span class="st">"nome"</span>).value = nome;
+
+    document.<span class="fn">getElementById</span>(<span class="st">"titulo-formulario"</span>).innerHTML = <span class="st">"&lt;b&gt;Editar Status&lt;/b&gt;"</span>;
+
+}
+
+<span class="cm">// Função para excluir um status de tarefa.</span>
+<span class="kw">async function</span> <span class="fn">excluir_status_tarefa</span>(id) {
+
+    <span class="cm">// Solicita confirmação antes de excluir.</span>
+    <span class="kw">if</span> (!<span class="fn">confirm</span>(<span class="st">"Tem certeza que deseja excluir este status de tarefa?"</span>)) <span class="kw">return</span>;
+
+    <span class="kw">try</span> {
+
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(`http://127.0.0.1:5000/api/status-tarefa/${id}`, {
+            method: <span class="st">"DELETE"</span>,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            }
+        });
+
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+
+        <span class="kw">if</span> (resposta.ok) {
+            <span class="fn">listar_status_tarefa</span>();
+        } <span class="kw">else</span> {
+            <span class="fn">alert</span>(dados.erro);
+        }
+
+    } <span class="kw">catch</span> {
+        <span class="fn">alert</span>(<span class="st">"Não foi possível atender sua requisição no momento. Tente mais tarde..."</span>);
+    }
+
+}
+
+<span class="cm">// Função para cancelar e limpar o formulário.</span>
+<span class="kw">function</span> <span class="fn">cancelar</span>() {
+
+    document.<span class="fn">getElementById</span>(<span class="st">"id-status-tarefa"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"nome"</span>).value = <span class="st">""</span>;
+
+    document.<span class="fn">getElementById</span>(<span class="st">"titulo-formulario"</span>).innerHTML = <span class="st">"&lt;b&gt;Registrar Novo Status&lt;/b&gt;"</span>;
+}</pre>
+    </div>
+
+    <div class="callout warn">
+      <strong>Esse arquivo também segue o caminho correto</strong>
+      Assim como em <code>usuarios.js</code>, o redirecionamento usa <code>"index.html"</code> e não <code>"../templates/index.html"</code>, já que <code>status_tarefa.html</code> também está dentro da pasta de <code>templates/</code>.
+    </div>
+
+    <h3>Passo 8 - Compreender as requisições de status de tarefas para o backend</h3>
+    <ul class="bullets">
+      <li>A lógica de decidir entre <code>POST</code> e <code>PUT</code> é a mesma usada em <code>usuarios.js</code>, que usa a presença do campo oculto de <code>id-status-tarefa</code>.</li>
+      <li><strong>excluir_status_tarefa()</strong> já está preparado para exibir, com <code>alert(dados.erro)</code>, a mensagem de erro vinda do backend caso o status de tarefa tenha tarefas vinculadas, já que essa mensagem foi definida na rota de exclusão.</li>
+    </ul>
+
+    <h3>Passo 9 - Estrutura atual de pastas do projeto</h3>
+    <p>Até este ponto, sua pasta de projeto deve estar organizada assim:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">estrutura de pastas<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>Kanban com SQL Puro/
+│
+├── app.py
+├── database.py
+├── .env
+│
+├── static/
+│   └── js/
+│       ├── utilidades.js
+│       ├── index.js
+│       ├── dashboard.js
+│       ├── usuarios.js
+│       └── status_tarefa.js
+│
+└── templates/
+    ├── index.html
+    ├── dashboard.html
+    ├── usuarios.html
+    └── status_tarefa.html</pre>
+    </div>
+
+    <h3>Passo 10 - Teste as requisições de status de tarefas para o backend</h3>
+    <p>Execute o arquivo de backend (<code>python app.py</code>), faça login e acesse a tela de <code>status_tarefa.html</code> pelo menu lateral. Cadastre alguns status (A Fazer, Em Andamento e Concluída), edite um deles, e teste a exclusão.</p>
+
+    <div class="callout tip">
+      <strong>Esperado nesta etapa</strong>
+      Como ainda não existem tarefas cadastradas, a exclusão de qualquer status de tarefa deve funcionar normalmente nesta etapa. A trava de exclusão só vai aparecer quando criarmos tarefas vinculadas a esses status de tarefa, na próxima etapa.
+    </div>
+
+    <div class="footer-nav"></div>
+
+</section>
+<section id="etapa-5">
+
+    <span class="etapa-tag">ETAPA 5 DE 6</span>
+    <h1>Tarefas</h1>
+    <p class="intro">Chegamos à entidade central do To do List - Kanban. Diferente de usuários e status de tarefas, aqui qualquer usuário logado pode cadastrar tarefas, mas apenas o próprio criador pode editar ou excluir a tarefa que ele mesmo criou. Tarefas também podem ter um arquivo de PDF anexado.</p>
+
+    <h2>Passo a Passo</h2>
+    <p>Primeiro vamos criar as cinco rotas de tarefas no backend, depois a tela de tarefas no frontend, e por fim o JavaScript que conecta tudo isso.</p>
+
+    <h3>Passo 1 - Crie a rota de cadastro de tarefa no backend</h3>
+    <p>No arquivo chamado de <code>app.py</code>, logo após a rota de exclusão de status de tarefa, adicione a rota exibida abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para cadastrar uma nova tarefa.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/tarefas"</span>, methods=[<span class="st">"POST"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">cadastrar_tarefa</span>():
+
+    <span class="cm"># Recebe o ID do usuário logado pelo token.</span>
+    id_usuario = <span class="fn">get_jwt_identity</span>()
+
+    <span class="cm"># Recebe os dados do frontend.</span>
+    titulo = request.form.<span class="fn">get</span>(<span class="st">"titulo"</span>)
+    descricao = request.form.<span class="fn">get</span>(<span class="st">"descricao"</span>)
+    id_status_tarefa = request.form.<span class="fn">get</span>(<span class="st">"id_status_tarefa"</span>)
+    arquivo = request.files.<span class="fn">get</span>(<span class="st">"arquivo"</span>)
+
+    <span class="cm"># Verifica se o arquivo enviado é um PDF.</span>
+    <span class="kw">if</span> arquivo <span class="kw">and not</span> arquivo.filename.<span class="fn">lower</span>().<span class="fn">endswith</span>(<span class="st">".pdf"</span>):
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Apenas arquivos de PDF são permitidos..."</span>}), <span class="num">400</span>
+
+    arquivo_bytes = arquivo.<span class="fn">read</span>() <span class="kw">if</span> arquivo <span class="kw">else</span> <span class="kw">None</span>
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Roda o SQL para cadastrar a tarefa.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"""</span>
+<span class="st">        INSERT INTO tarefa (titulo, descricao, arquivo, id_usuario, id_status_tarefa)</span>
+<span class="st">        VALUES (%s, %s, %s, %s, %s)</span>
+<span class="st">    """</span>, (titulo, descricao, arquivo_bytes, id_usuario, id_status_tarefa))
+
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Tarefa cadastrada com sucesso!"</span>}), <span class="num">201</span></pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que essa rota não verifica administrador?</strong>
+      Diferente das rotas de usuários e de status de tarefa, qualquer usuário logado pode cadastrar suas próprias tarefas. O controle de acesso aqui é por propriedade da tarefa, e não por privilégio de administrador.
+    </div>
+
+    <h3>Passo 2 - Crie a rota de listagem de tarefas no backend</h3>
+    <p>Logo abaixo da rota de cadastro de tarefa no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para listar todas as tarefas.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/tarefas"</span>, methods=[<span class="st">"GET"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">listar_tarefas</span>():
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Roda o SQL para buscar todas as tarefas com o nome do status de tarefa e do usuário.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"""</span>
+<span class="st">        SELECT</span>
+<span class="st">            t.id,</span>
+<span class="st">            t.titulo,</span>
+<span class="st">            t.descricao,</span>
+<span class="st">            t.criado_em,</span>
+<span class="st">            t.arquivo IS NOT NULL AS tem_arquivo,</span>
+<span class="st">            s.nome AS status,</span>
+<span class="st">            u.nome AS usuario</span>
+<span class="st">        FROM tarefa t</span>
+<span class="st">        JOIN status_tarefa s ON t.id_status_tarefa = s.id</span>
+<span class="st">        JOIN usuario u ON t.id_usuario = u.id</span>
+<span class="st">    """</span>)
+    tarefas = cursor.<span class="fn">fetchall</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>(tarefas), <span class="num">200</span></pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que JOIN com duas tabelas?</strong>
+      A tabela de <code>tarefa</code> só guarda os IDs do status de tarefa e do usuário, não os nomes. Os dois <code>JOIN</code> trazem o nome do status de tarefa e o nome do usuário diretamente na mesma consulta de SQL, evitando que o frontend precise fazer requisições extras só para descobrir esses nomes.
+    </div>
+
+    <h3>Passo 3 - Crie a rota de edição de tarefa no backend</h3>
+    <p>Logo abaixo da rota de listagem de tarefa no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para editar uma tarefa.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/tarefas/&lt;int:id&gt;"</span>, methods=[<span class="st">"PUT"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">editar_tarefa</span>(id):
+
+    <span class="cm"># Recebe o ID do usuário logado pelo token.</span>
+    id_usuario = <span class="fn">get_jwt_identity</span>()
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Verifica se a tarefa existe e se pertence ao usuário logado.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id_usuario FROM tarefa WHERE id = %s"</span>, (id,))
+    tarefa = cursor.<span class="fn">fetchone</span>()
+
+    <span class="kw">if not</span> tarefa <span class="kw">or</span> <span class="nb">str</span>(tarefa[<span class="st">"id_usuario"</span>]) != id_usuario:
+        cursor.<span class="fn">close</span>()
+        link.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Recebe os dados do frontend.</span>
+    titulo = request.form.<span class="fn">get</span>(<span class="st">"titulo"</span>)
+    descricao = request.form.<span class="fn">get</span>(<span class="st">"descricao"</span>)
+    id_status_tarefa = request.form.<span class="fn">get</span>(<span class="st">"id_status_tarefa"</span>)
+    arquivo = request.files.<span class="fn">get</span>(<span class="st">"arquivo"</span>)
+
+    <span class="cm"># Verifica se o arquivo enviado é um PDF.</span>
+    <span class="kw">if</span> arquivo <span class="kw">and not</span> arquivo.filename.<span class="fn">lower</span>().<span class="fn">endswith</span>(<span class="st">".pdf"</span>):
+        cursor.<span class="fn">close</span>()
+        link.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Apenas arquivos de PDF são permitidos..."</span>}), <span class="num">400</span>
+
+    <span class="cm"># Se um novo arquivo foi enviado, atualiza. Caso contrário, mantém o atual.</span>
+    <span class="kw">if</span> arquivo:
+        arquivo_bytes = arquivo.<span class="fn">read</span>()
+        cursor.<span class="fn">execute</span>(<span class="st">"""</span>
+<span class="st">            UPDATE tarefa SET titulo = %s, descricao = %s, arquivo = %s, id_status_tarefa = %s</span>
+<span class="st">            WHERE id = %s</span>
+<span class="st">        """</span>, (titulo, descricao, arquivo_bytes, id_status_tarefa, id))
+    <span class="kw">else</span>:
+        cursor.<span class="fn">execute</span>(<span class="st">"""</span>
+<span class="st">            UPDATE tarefa SET titulo = %s, descricao = %s, id_status_tarefa = %s</span>
+<span class="st">            WHERE id = %s</span>
+<span class="st">        """</span>, (titulo, descricao, id_status_tarefa, id))
+
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Tarefa editada com sucesso!"</span>}), <span class="num">200</span></pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que comparar com uma string?</strong>
+      O <code>id_usuario</code> que vem do banco de dados é um número inteiro, mas o <code>get_jwt_identity()</code> retorna uma string, pois foi assim que o token da web foi gerado na rota de login. Por isso a comparação <code>str(tarefa["id_usuario"]) != id_usuario</code> é necessária para funcionar corretamente.
+    </div>
+
+    <h3>Passo 4 - Crie a rota de exclusão de tarefa no backend</h3>
+    <p>Logo abaixo da rota de edição de tarefa no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para excluir uma tarefa.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/tarefas/&lt;int:id&gt;"</span>, methods=[<span class="st">"DELETE"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">excluir_tarefa</span>(id):
+
+    <span class="cm"># Recebe o ID do usuário logado pelo token.</span>
+    id_usuario = <span class="fn">get_jwt_identity</span>()
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Verifica se a tarefa existe e se pertence ao usuário logado.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT id_usuario FROM tarefa WHERE id = %s"</span>, (id,))
+    tarefa = cursor.<span class="fn">fetchone</span>()
+
+    <span class="kw">if not</span> tarefa <span class="kw">or</span> <span class="nb">str</span>(tarefa[<span class="st">"id_usuario"</span>]) != id_usuario:
+        cursor.<span class="fn">close</span>()
+        link.<span class="fn">close</span>()
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Acesso negado..."</span>}), <span class="num">403</span>
+
+    <span class="cm"># Roda o SQL para excluir a tarefa.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"DELETE FROM tarefa WHERE id = %s"</span>, (id,))
+    link.<span class="fn">commit</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"mensagem"</span>: <span class="st">"Tarefa excluída com sucesso!"</span>}), <span class="num">200</span></pre>
+    </div>
+
+    <h3>Passo 5 - Crie a rota de download do arquivo da tarefa no backend</h3>
+    <p>Logo abaixo da rota de exclusão de tarefa no <code>app.py</code>, adicione o conteúdo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">python — app.py<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm"># -------------------------</span>
+<span class="cm"># Rota para baixar o arquivo de uma tarefa.</span>
+<span class="kw">@app.route</span>(<span class="st">"/api/tarefas/&lt;int:id&gt;/arquivo"</span>, methods=[<span class="st">"GET"</span>])
+<span class="kw">@jwt_required</span>()
+<span class="kw">def</span> <span class="fn">baixar_arquivo_tarefa</span>(id):
+
+    <span class="cm"># Abre uma conexão com o banco de dados.</span>
+    link = <span class="fn">database_connection</span>()
+    cursor = link.<span class="fn">cursor</span>(dictionary=<span class="kw">True</span>)
+
+    <span class="cm"># Roda o SQL para buscar o arquivo e o título da tarefa.</span>
+    cursor.<span class="fn">execute</span>(<span class="st">"SELECT titulo, arquivo FROM tarefa WHERE id = %s"</span>, (id,))
+    tarefa = cursor.<span class="fn">fetchone</span>()
+
+    <span class="cm"># Fecha a conexão com o banco de dados.</span>
+    cursor.<span class="fn">close</span>()
+    link.<span class="fn">close</span>()
+
+    <span class="cm"># Verifica se a tarefa existe e se possui arquivo.</span>
+    <span class="kw">if not</span> tarefa <span class="kw">or not</span> tarefa[<span class="st">"arquivo"</span>]:
+        <span class="kw">return</span> <span class="fn">jsonify</span>({<span class="st">"erro"</span>: <span class="st">"Arquivo não encontrado..."</span>}), <span class="num">404</span>
+
+    <span class="cm"># Envia o arquivo como download.</span>
+    <span class="kw">return</span> <span class="fn">send_file</span>(
+        <span class="nb">BytesIO</span>(tarefa[<span class="st">"arquivo"</span>]),
+        download_name=<span class="kw">f</span><span class="st">"{tarefa['titulo']}.pdf"</span>,
+        as_attachment=<span class="kw">True</span>
+    )</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que essa rota não verifica o dono da tarefa?</strong>
+      Diferente da edição e exclusão de tarefa, o download do arquivo é liberado para qualquer usuário logado, não só para quem criou a tarefa. Isso permite que toda a equipe acesse a documentação anexada, mesmo sem poder alterar a tarefa em si.
+    </div>
+
+    <div class="callout warn">
+      <strong>Limitação conhecida</strong>
+      O nome do arquivo no download é sempre <code>{titulo}.pdf</code>, fixo. Isso acontece porque a tabela de <code>tarefa</code> não guarda o nome original do arquivo enviado, só os bytes. Para um projeto didático isso é aceitável, mas em produção seria necessário guardar o nome original em uma coluna separada.
+    </div>
+
+    <h3>Passo 6 - Compreender as cinco rotas criadas</h3>
+    <ul class="bullets">
+      <li>As rotas de edição e exclusão de tarefa não verificam se o usuário é um <code>administrador</code>. Em vez disso, comparam o <code>id_usuario</code> da tarefa com o <code>id_usuario</code> do token da web, garantindo que só o criador da tarefa possa alterá-la.</li>
+      <li><strong>request.form</strong> e <strong>request.files</strong> são usados em vez de <code>request.get_json()</code>, pois o cadastro e a edição de tarefa enviam dados no formato de <code>multipart/form-data</code>, necessário para o envio de arquivos.</li>
+      <li><strong>arquivo.filename.lower().endswith(".pdf")</strong> valida a extensão do arquivo, mas não o conteúdo real dele. Isso significa que um arquivo renomeado para <code>.pdf</code> ainda passaria pela validação, mas é uma limitação aceitável para fins didáticos.</li>
+      <li><strong>send_file(BytesIO(...))</strong> permite enviar o arquivo como download diretamente dos bytes guardados no banco de dados, sem precisar salvar nada em disco antes.</li>
+    </ul>
+
+    <h3>Passo 7 - Crie a tela de tarefas no frontend</h3>
+    <p>Na pasta de <code>templates/</code>, crie um arquivo chamado de <code>tarefas.html</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">html — tarefas.html<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="pt-BR"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"/&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"/&gt;
+  &lt;title&gt;Tarefas - Taskan&lt;/title&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/&gt;
+  &lt;link rel="stylesheet" href="../static/css/styles.css"/&gt;
+&lt;/head&gt;
+&lt;body&gt;
+
+  &lt;!-- Sidebar --&gt;
+  &lt;div class="sidebar d-flex flex-column p-3"&gt;
+    &lt;div class="sidebar-logo mb-4"&gt;
+      &lt;img src="../static/images/Logotipo do Sidebar - Taskan.png" alt="Logotipo - Taskan" class="logo-sidebar"/&gt;
+    &lt;/div&gt;
+    &lt;nav class="nav flex-column gap-1"&gt;
+      &lt;a href="dashboard.html" class="nav-link"&gt;Dashboard&lt;/a&gt;
+      &lt;a href="usuarios.html" class="nav-link"&gt;Usuários&lt;/a&gt;
+      &lt;a href="status_tarefa.html" class="nav-link"&gt;Status de Tarefas&lt;/a&gt;
+      &lt;a href="tarefas.html" class="nav-link active"&gt;Tarefas&lt;/a&gt;
+    &lt;/nav&gt;
+    &lt;div class="mt-auto"&gt;
+      &lt;button class="btn btn-outline-light w-100" onclick="fazer_logout()"&gt;Sair&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Conteúdo principal --&gt;
+  &lt;div class="conteudo"&gt;
+
+    &lt;h4 class="mb-4"&gt;Tarefas&lt;/h4&gt;
+
+    &lt;!-- Formulário de cadastro/edição de dados --&gt;
+    &lt;div class="card shadow-sm mb-4"&gt;
+      &lt;div class="card-body"&gt;
+
+        &lt;h6 class="mb-3" id="titulo-formulario"&gt;&lt;b&gt;Registrar Nova Tarefa&lt;/b&gt;&lt;/h6&gt;
+
+        &lt;input type="hidden" id="id-tarefa"/&gt;
+
+        &lt;div class="row g-3"&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;Título&lt;/label&gt;
+            &lt;input type="text" class="form-control" id="titulo" placeholder="Título da tarefa"/&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-6"&gt;
+            &lt;label class="form-label"&gt;Status&lt;/label&gt;
+            &lt;select class="form-select" id="id-status-tarefa"&gt;
+              &lt;option value=""&gt;Selecione um status&lt;/option&gt;
+
+              &lt;!-- Opções geradas dinamicamente pelo JS --&gt;
+
+            &lt;/select&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-12"&gt;
+            &lt;label class="form-label"&gt;Descrição&lt;/label&gt;
+            &lt;textarea class="form-control" id="descricao" rows="3" placeholder="Descrição da tarefa"&gt;&lt;/textarea&gt;
+          &lt;/div&gt;
+          &lt;div class="col-md-12"&gt;
+            &lt;label class="form-label"&gt;Anexar Arquivo (Documentação ou Relatório)&lt;/label&gt;
+            &lt;input type="file" class="form-control" id="arquivo"/&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;div class="mt-3 mb-3 d-flex gap-2"&gt;
+          &lt;button class="btn btn-primary" onclick="salvar_tarefa()"&gt;Salvar&lt;/button&gt;
+          &lt;button class="btn btn-secondary" onclick="cancelar()"&gt;Cancelar&lt;/button&gt;
+        &lt;/div&gt;
+
+        &lt;div id="mensagem" class="mt-3"&gt;&lt;/div&gt;
+
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Tabela de tarefas --&gt;
+    &lt;div class="card shadow-sm"&gt;
+      &lt;div class="card-body"&gt;
+        &lt;table class="table table-hover align-middle mb-0"&gt;
+          &lt;thead&gt;
+            &lt;tr&gt;
+              &lt;th&gt;Título&lt;/th&gt;
+              &lt;th&gt;Status&lt;/th&gt;
+              &lt;th&gt;Descrição&lt;/th&gt;
+              &lt;th&gt;Arquivo&lt;/th&gt;
+              &lt;th&gt;Criado em&lt;/th&gt;
+              &lt;th&gt;Ações&lt;/th&gt;
+            &lt;/tr&gt;
+          &lt;/thead&gt;
+          &lt;tbody id="tabela-tarefas"&gt;
+
+            &lt;!-- Linhas geradas dinamicamente pelo JS --&gt;
+
+          &lt;/tbody&gt;
+        &lt;/table&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+  &lt;/div&gt;
+
+  &lt;!-- Vinculo com os arquivos de JS --&gt;
+  &lt;script src="../static/js/utilidades.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/tarefas.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/dashboard.js"&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que o campo de arquivo não tem accept=".pdf"?</strong>
+      O atributo <code>accept</code> no HTML é apenas uma sugestão visual para o seletor de arquivos do navegador, e pode ser facilmente ignorado ou contornado. A validação real e confiável acontece no backend, na rota de cadastro e de edição de tarefa.
+    </div>
+
+    <h3>Passo 8 - Crie o JavaScript das requisições de tarefas para o backend</h3>
+    <p>Na pasta de <code>js/</code> que fica dentro de <code>static/</code>, crie um arquivo chamado de <code>tarefas.js</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">javascript — tarefas.js<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">// Verifica se o usuário está logado ao carregar o HTML.</span>
+<span class="kw">if</span> (!localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)) {
+    window.location.href = <span class="st">"index.html"</span>;
+}
+
+<span class="cm">// Carrega os dados ao abrir o HTML.</span>
+<span class="fn">listar_status_tarefa_select</span>();
+<span class="fn">listar_tarefas</span>();
+
+<span class="cm">// Função para popular o select de status de tarefas.</span>
+<span class="kw">async function</span> <span class="fn">listar_status_tarefa_select</span>() {
+
+    <span class="kw">try</span> {
+
+        <span class="cm">// Faz uma requisição para o backend.</span>
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/status-tarefa"</span>, {
+            method: <span class="st">"GET"</span>,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            }
+        });
+
+        <span class="cm">// Recupera os dados retornados pelo backend.</span>
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+        <span class="kw">const</span> select = document.<span class="fn">getElementById</span>(<span class="st">"id-status-tarefa"</span>);
+
+        <span class="cm">// Exibe os status de tarefa no SELECT do formulário.</span>
+        dados.<span class="fn">forEach</span>(<span class="kw">function</span> (status) {
+            select.innerHTML += `&lt;option value="${status.id}"&gt;${status.nome}&lt;/option&gt;`;
+        });
+
+    } <span class="kw">catch</span> {
+        console.<span class="fn">error</span>(<span class="st">"Não foi possível carregar os status de tarefas..."</span>);
+    }
+
+}
+
+<span class="cm">// Função para salvar uma nova tarefa ou editar uma existente.</span>
+<span class="kw">async function</span> <span class="fn">salvar_tarefa</span>() {
+
+    <span class="kw">const</span> id = document.<span class="fn">getElementById</span>(<span class="st">"id-tarefa"</span>).value;
+    <span class="kw">const</span> mensagem = document.<span class="fn">getElementById</span>(<span class="st">"mensagem"</span>);
+
+    <span class="kw">const</span> formData = <span class="kw">new</span> <span class="nb">FormData</span>();
+    formData.<span class="fn">append</span>(<span class="st">"titulo"</span>, document.<span class="fn">getElementById</span>(<span class="st">"titulo"</span>).value);
+    formData.<span class="fn">append</span>(<span class="st">"descricao"</span>, document.<span class="fn">getElementById</span>(<span class="st">"descricao"</span>).value);
+    formData.<span class="fn">append</span>(<span class="st">"id_status_tarefa"</span>, document.<span class="fn">getElementById</span>(<span class="st">"id-status-tarefa"</span>).value);
+
+    <span class="kw">const</span> arquivo = document.<span class="fn">getElementById</span>(<span class="st">"arquivo"</span>).files[<span class="num">0</span>];
+    <span class="kw">if</span> (arquivo) formData.<span class="fn">append</span>(<span class="st">"arquivo"</span>, arquivo);
+
+    <span class="kw">try</span> {
+
+        <span class="cm">// Se houver ID, é uma edição. Caso contrário, é um cadastro.</span>
+        <span class="kw">const</span> metodo = id ? <span class="st">"PUT"</span> : <span class="st">"POST"</span>;
+        <span class="kw">const</span> url = id ? `http://127.0.0.1:5000/api/tarefas/${id}` : <span class="st">"http://127.0.0.1:5000/api/tarefas"</span>;
+
+        <span class="cm">// Requisição de cadastro ou edição de dados para o backend.</span>
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(url, {
+            method: metodo,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            },
+            body: formData
+        });
+
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+
+        <span class="kw">if</span> (resposta.ok) {
+
+            <span class="cm">// Mensagem de sucesso pelo backend.</span>
+            mensagem.className = <span class="st">"alert alert-success"</span>;
+            mensagem.textContent = dados.mensagem;
+            <span class="fn">cancelar</span>();
+            <span class="fn">listar_tarefas</span>();
+
+            <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+                mensagem.className = <span class="st">""</span>;
+                mensagem.textContent = <span class="st">""</span>;
+            }, <span class="num">4000</span>);
+
+        } <span class="kw">else</span> {
+
+            <span class="cm">// Mensagem de erro pelo backend.</span>
+            mensagem.className = <span class="st">"alert alert-danger"</span>;
+            mensagem.textContent = dados.erro;
+
+            <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+                mensagem.className = <span class="st">""</span>;
+                mensagem.textContent = <span class="st">""</span>;
+            }, <span class="num">4000</span>);
+
+        }
+
+    } <span class="kw">catch</span> {
+
+        <span class="cm">// Mensagem de falha no atendimento a requisição pelo backend.</span>
+        mensagem.className = <span class="st">"alert alert-warning"</span>;
+        mensagem.textContent = <span class="st">"Não foi possível atender sua requisição no momento. Tente mais tarde..."</span>;
+
+        <span class="fn">setTimeout</span>(<span class="kw">function</span> () {
+            mensagem.className = <span class="st">""</span>;
+            mensagem.textContent = <span class="st">""</span>;
+        }, <span class="num">4000</span>);
+
+    }
+
+}
+
+<span class="cm">// Função para listar todas as tarefas na tabela.</span>
+<span class="kw">async function</span> <span class="fn">listar_tarefas</span>() {
+
+    <span class="kw">try</span> {
+
+        <span class="cm">// Faz uma requisição para o backend.</span>
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/tarefas"</span>, {
+            method: <span class="st">"GET"</span>,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            }
+        });
+
+        <span class="cm">// Captura os dados retornados pelo backend.</span>
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+        <span class="kw">const</span> tabela = document.<span class="fn">getElementById</span>(<span class="st">"tabela-tarefas"</span>);
+        tabela.innerHTML = <span class="st">""</span>;
+
+        <span class="cm">// Preenche a tabela com os dados retornados pelo backend.</span>
+        dados.<span class="fn">forEach</span>(<span class="kw">function</span> (tarefa) {
+
+            tabela.innerHTML += `
+                &lt;tr&gt;
+                    &lt;td&gt;${tarefa.titulo}&lt;/td&gt;
+                    &lt;td&gt;${tarefa.status}&lt;/td&gt;
+                    &lt;td&gt;${tarefa.descricao || <span class="st">"-"</span>}&lt;/td&gt;
+                    &lt;td&gt;${tarefa.tem_arquivo ? `&lt;button class="btn btn-sm btn-outline-primary" onclick="baixar_arquivo(${tarefa.id})"&gt;&lt;i class="bi bi-download"&gt;&lt;/i&gt;&lt;/button&gt;` : <span class="st">"-"</span>}&lt;/td&gt;
+                    &lt;td&gt;${<span class="kw">new</span> <span class="nb">Date</span>(tarefa.criado_em).<span class="fn">toLocaleDateString</span>(<span class="st">"pt-BR"</span>)}&lt;/td&gt;
+                    &lt;td&gt;
+                        &lt;button class="btn btn-sm btn-warning" onclick="editar_tarefa(${tarefa.id}, '${tarefa.titulo}', '${tarefa.descricao || <span class="st">""</span>}')"&gt;&lt;i class="bi bi-pencil"&gt;&lt;/i&gt;&lt;/button&gt;
+                        &lt;button class="btn btn-sm btn-danger" onclick="excluir_tarefa(${tarefa.id})"&gt;&lt;i class="bi bi-trash"&gt;&lt;/i&gt;&lt;/button&gt;
+                    &lt;/td&gt;
+                &lt;/tr&gt;
+            `;
+
+        });
+
+    } <span class="kw">catch</span> {
+        console.<span class="fn">error</span>(<span class="st">"Não foi possível carregar as tarefas..."</span>);
+    }
+
+}
+
+<span class="cm">// Função para preencher o formulário com os dados da tarefa a ser editada.</span>
+<span class="kw">function</span> <span class="fn">editar_tarefa</span>(id, titulo, descricao) {
+
+    document.<span class="fn">getElementById</span>(<span class="st">"id-tarefa"</span>).value = id;
+    document.<span class="fn">getElementById</span>(<span class="st">"titulo"</span>).value = titulo;
+    document.<span class="fn">getElementById</span>(<span class="st">"descricao"</span>).value = descricao;
+
+    document.<span class="fn">getElementById</span>(<span class="st">"titulo-formulario"</span>).innerHTML = <span class="st">"&lt;b&gt;Editar Tarefa&lt;/b&gt;"</span>;
+
+}
+
+<span class="cm">// Função para excluir uma tarefa.</span>
+<span class="kw">async function</span> <span class="fn">excluir_tarefa</span>(id) {
+
+    <span class="cm">// Solicita confirmação antes de excluir.</span>
+    <span class="kw">if</span> (!<span class="fn">confirm</span>(<span class="st">"Tem certeza que deseja excluir esta tarefa?"</span>)) <span class="kw">return</span>;
+
+    <span class="kw">try</span> {
+
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(`http://127.0.0.1:5000/api/tarefas/${id}`, {
+            method: <span class="st">"DELETE"</span>,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            }
+        });
+
+        <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+
+        <span class="kw">if</span> (resposta.ok) {
+            <span class="fn">listar_tarefas</span>();
+        } <span class="kw">else</span> {
+            <span class="fn">alert</span>(dados.erro);
+        }
+
+    } <span class="kw">catch</span> {
+        <span class="fn">alert</span>(<span class="st">"Não foi possível atender sua requisição no momento. Tente mais tarde..."</span>);
+    }
+
+}
+
+<span class="cm">// Função para baixar o arquivo de uma tarefa.</span>
+<span class="kw">async function</span> <span class="fn">baixar_arquivo</span>(id) {
+
+    <span class="kw">try</span> {
+
+        <span class="kw">const</span> resposta = <span class="kw">await</span> <span class="fn">fetch</span>(`http://127.0.0.1:5000/api/tarefas/${id}/arquivo`, {
+            method: <span class="st">"GET"</span>,
+            headers: {
+                <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}`
+            }
+        });
+
+        <span class="kw">if</span> (!resposta.ok) {
+            <span class="kw">const</span> dados = <span class="kw">await</span> resposta.<span class="fn">json</span>();
+            <span class="fn">alert</span>(dados.erro);
+            <span class="kw">return</span>;
+        }
+
+        <span class="cm">// Converte a resposta em um arquivo e dispara o download no navegador.</span>
+        <span class="kw">const</span> blob = <span class="kw">await</span> resposta.<span class="fn">blob</span>();
+        <span class="kw">const</span> url = window.URL.<span class="fn">createObjectURL</span>(blob);
+        <span class="kw">const</span> link = document.<span class="fn">createElement</span>(<span class="st">"a"</span>);
+        link.href = url;
+        link.download = <span class="st">"arquivo.pdf"</span>;
+        link.<span class="fn">click</span>();
+        window.URL.<span class="fn">revokeObjectURL</span>(url);
+
+    } <span class="kw">catch</span> {
+        <span class="fn">alert</span>(<span class="st">"Não foi possível atender sua requisição no momento. Tente mais tarde..."</span>);
+    }
+
+}
+
+<span class="cm">// Função para cancelar e limpar o formulário.</span>
+<span class="kw">function</span> <span class="fn">cancelar</span>() {
+
+    document.<span class="fn">getElementById</span>(<span class="st">"id-tarefa"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"titulo"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"descricao"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"id-status-tarefa"</span>).value = <span class="st">""</span>;
+    document.<span class="fn">getElementById</span>(<span class="st">"arquivo"</span>).value = <span class="st">""</span>;
+
+    document.<span class="fn">getElementById</span>(<span class="st">"titulo-formulario"</span>).innerHTML = <span class="st">"&lt;b&gt;Registrar Nova Tarefa&lt;/b&gt;"</span>;
+}</pre>
+    </div>
+
+    <div class="callout warn">
+      <strong>Por que não usar Content-Type aqui?</strong>
+      Diferente de <code>usuarios.js</code> e <code>status_tarefa.js</code>, este <code>fetch</code> não define <code>"Content-Type": "application/json"</code>. Quando o corpo da requisição é um <code>FormData</code>, o próprio navegador da web define o cabeçalho correto automaticamente, incluindo um identificador especial necessário para o backend separar corretamente o arquivo dos demais campos.
+    </div>
+
+    <div class="callout note">
+      <strong>Por que baixar_arquivo() usa fetch em vez de um link direto?</strong>
+      A rota de download exige o cabeçalho <code>Authorization</code> com o token da web, e um link comum de HTML não tem como enviar esse cabeçalho. Por isso o <code>fetch</code> busca o arquivo, transforma a resposta em <code>blob</code>, cria uma URL temporária na memória do navegador, e simula um clique para disparar o download.
+    </div>
+
+    <h3>Passo 9 - Compreender o JavaScript de tarefas</h3>
+    <ul class="bullets">
+      <li><strong>editar_tarefa()</strong> não recebe o <code>id_status_tarefa</code> como parâmetro, então o SELECT do HTML volta para a opção de "Selecione um status" ao editar uma tarefa, exigindo que o usuário reselecione o status da tarefa manualmente.</li>
+      <li>O campo de arquivo nunca é preenchido na edição, mesmo que a tarefa já tenha um arquivo. Isso é intencional, pois o backend já trata a ausência de um novo arquivo mantendo o arquivo atual.</li>
+      <li><strong>tarefa.tem_arquivo</strong> controla se o botão de download aparece ou não na tabela, reaproveitando o campo booleano que já vem calculado direto do SQL.</li>
+    </ul>
+
+    <h3>Passo 10 - Estrutura atual de pastas do projeto</h3>
+    <p>Até este ponto, sua pasta de projeto deve estar organizada assim:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">estrutura de pastas<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>Kanban com SQL Puro/
+│
+├── app.py
+├── database.py
+├── .env
+│
+├── static/
+│   └── js/
+│       ├── utilidades.js
+│       ├── index.js
+│       ├── dashboard.js
+│       ├── usuarios.js
+│       ├── status_tarefa.js
+│       └── tarefas.js
+│
+└── templates/
+    ├── index.html
+    ├── dashboard.html
+    ├── usuarios.html
+    ├── status_tarefa.html
+    └── tarefas.html</pre>
+    </div>
+
+    <h3>Passo 11 - Teste as requisições de tarefas para o backend</h3>
+    <p>Execute o arquivo de backend (<code>python app.py</code>), faça login e acesse a tela de <code>tarefas.html</code> pelo menu lateral. Cadastre uma tarefa com e sem arquivo anexado, edite-a, baixe o arquivo (se houver), e por fim exclua a tarefa.</p>
+
+    <div class="callout tip">
+      <strong>Esperado nesta etapa</strong>
+      Se você cadastrar uma tarefa, fizer logout e entrar com outro usuário, a tarefa criada pelo primeiro usuário deve aparecer na listagem (já que listar é liberado para todos), mas tentar editá-la ou excluí-la deve retornar <code>403</code> (acesso negado), pois você não é o dono dela.
+    </div>
+
+    <div class="footer-nav"></div>
+
+</section>
+<section id="etapa-6">
+
+    <span class="etapa-tag">ETAPA 6 DE 6</span>
+    <h1>Quadro Kanban no Dashboard</h1>
+    <p class="intro">Com as três entidades completas (usuários, status de tarefas e tarefas), chegou a hora de dar vida ao painel de gerenciamento. Vamos atualizar o <code>dashboard.html</code> e o <code>dashboard.js</code> para montar um quadro Kanban totalmente dinâmico, com uma coluna para cada status cadastrado.</p>
+
+    <h2>Passo a Passo</h2>
+    <p>Como já temos as rotas de listagem de status de tarefas e de tarefas prontas desde as etapas anteriores, não é necessário criar nenhuma rota nova no backend. Vamos apenas reescrever o <code>dashboard.html</code> e o <code>dashboard.js</code> para consumir essas rotas e montar o quadro, e por fim criar o arquivo de estilos e as imagens de logotipo que faltavam desde a etapa 2.</p>
+
+    <h3>Passo 1 - Reescreva a tela do painel de gerenciamento no frontend</h3>
+    <p>No arquivo chamado de <code>dashboard.html</code>, substitua o conteúdo completo pelo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">html — dashboard.html<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="pt-BR"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"/&gt;
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"/&gt;
+  &lt;title&gt;Painel de Gerenciamento - Taskan&lt;/title&gt;
+  &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/&gt;
+  &lt;link rel="stylesheet" href="../static/css/styles.css"/&gt;
+&lt;/head&gt;
+&lt;body&gt;
+
+  &lt;!-- Sidebar --&gt;
+  &lt;div class="sidebar d-flex flex-column p-3"&gt;
+    &lt;div class="sidebar-logo mb-4"&gt;
+      &lt;img src="../static/images/Logotipo do Sidebar - Taskan.png" alt="Logotipo - Taskan" class="logo-sidebar"/&gt;
+    &lt;/div&gt;
+    &lt;nav class="nav flex-column gap-1"&gt;
+      &lt;a href="dashboard.html" class="nav-link active"&gt;Dashboard&lt;/a&gt;
+      &lt;a href="usuarios.html" class="nav-link"&gt;Usuários&lt;/a&gt;
+      &lt;a href="status_tarefa.html" class="nav-link"&gt;Status de Tarefas&lt;/a&gt;
+      &lt;a href="tarefas.html" class="nav-link"&gt;Tarefas&lt;/a&gt;
+    &lt;/nav&gt;
+    &lt;div class="mt-auto"&gt;
+      &lt;button class="btn btn-outline-light w-100" onclick="fazer_logout()"&gt;Sair&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;!-- Conteúdo principal --&gt;
+  &lt;div class="conteudo"&gt;
+
+    &lt;h4 class="mb-4"&gt;Painel de Gerenciamento&lt;/h4&gt;
+
+    &lt;!-- Cartão de resumo --&gt;
+    &lt;div class="row g-3 mb-5"&gt;
+      &lt;div class="col-md-4"&gt;
+        &lt;div class="card shadow-sm"&gt;
+          &lt;div class="card-body"&gt;
+            &lt;p class="text-muted mb-1"&gt;Total de Tarefas&lt;/p&gt;
+            &lt;h3 id="total-tarefas"&gt;—&lt;/h3&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;!-- Quadro do Kanban --&gt;
+    &lt;h4 class="mb-3"&gt;Kanban&lt;/h4&gt;
+    &lt;div class="quadro-kanban" id="quadro-kanban"&gt;
+
+      &lt;!-- Colunas geradas dinamicamente pelo JS --&gt;
+
+    &lt;/div&gt;
+
+  &lt;/div&gt;
+
+  &lt;!-- Vinculo com os arquivos de JS --&gt;
+  &lt;script src="../static/js/utilidades.js"&gt;&lt;/script&gt;
+  &lt;script src="../static/js/dashboard.js"&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>O que mudou aqui?</strong>
+      Na prática, nada na estrutura do HTML mudou em relação à etapa 2. O cartão de <code>Total de Tarefas</code> e o <code>quadro-kanban</code> já existiam, só estavam vazios porque o <code>dashboard.js</code> ainda não buscava nenhum dado. Quem realmente faz o trabalho nesta etapa é o JavaScript.
+    </div>
+
+    <h3>Passo 2 - Reescreva o JavaScript do painel de gerenciamento</h3>
+    <p>No arquivo chamado de <code>dashboard.js</code>, substitua o conteúdo completo pelo exibido abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">javascript — dashboard.js<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">// Verifica se o usuário está logado ao carregar o painel de gerenciamento.</span>
+<span class="kw">if</span> (!localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)) {
+
+    <span class="cm">// Redireciona para o login.</span>
+    window.location.href = <span class="st">"index.html"</span>;
+}
+
+<span class="cm">// Carrega os dados do quadro Kanban ao abrir o painel de gerenciamento.</span>
+<span class="fn">montar_quadro_kanban</span>();
+
+<span class="cm">// Função para fazer o logout.</span>
+<span class="kw">async function</span> <span class="fn">fazer_logout</span>() {
+
+    <span class="cm">// Recupera o token salvo no navegador da web.</span>
+    <span class="kw">const</span> token = localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>);
+
+    <span class="cm">// Envia a requisição de logout para o backend.</span>
+    <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/logout"</span>, {
+        method: <span class="st">"POST"</span>,
+        headers: {
+            <span class="st">"Content-Type"</span>: <span class="st">"application/json"</span>,
+            <span class="st">"Authorization"</span>: `Bearer ${token}`
+        }
+    });
+
+    <span class="cm">// Remove o token do navegador da web e redireciona para o login.</span>
+    localStorage.<span class="fn">removeItem</span>(<span class="st">"token"</span>);
+    window.location.href = <span class="st">"index.html"</span>;
+
+}
+
+<span class="cm">// Função para montar o quadro Kanban com base nos status e nas tarefas cadastradas.</span>
+<span class="kw">async function</span> <span class="fn">montar_quadro_kanban</span>() {
+
+    <span class="kw">try</span> {
+
+        <span class="cm">// Busca os status de tarefas e as tarefas no backend.</span>
+        <span class="kw">const</span> resposta_status = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/status-tarefa"</span>, {
+            method: <span class="st">"GET"</span>,
+            headers: { <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}` }
+        });
+
+        <span class="kw">const</span> resposta_tarefas = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">"http://127.0.0.1:5000/api/tarefas"</span>, {
+            method: <span class="st">"GET"</span>,
+            headers: { <span class="st">"Authorization"</span>: `Bearer ${localStorage.<span class="fn">getItem</span>(<span class="st">"token"</span>)}` }
+        });
+
+        <span class="kw">const</span> status_tarefas = <span class="kw">await</span> resposta_status.<span class="fn">json</span>();
+        <span class="kw">const</span> tarefas = <span class="kw">await</span> resposta_tarefas.<span class="fn">json</span>();
+
+        <span class="cm">// Atualiza o cartão de total de tarefas.</span>
+        document.<span class="fn">getElementById</span>(<span class="st">"total-tarefas"</span>).textContent = tarefas.length;
+
+        <span class="cm">// Captura o quadro Kanban e limpa o conteúdo atual.</span>
+        <span class="kw">const</span> quadro = document.<span class="fn">getElementById</span>(<span class="st">"quadro-kanban"</span>);
+        quadro.innerHTML = <span class="st">""</span>;
+
+        <span class="cm">// Cria uma coluna para cada status de tarefa cadastrado.</span>
+        status_tarefas.<span class="fn">forEach</span>(<span class="kw">function</span> (status) {
+
+            <span class="cm">// Filtra somente as tarefas que pertencem a esse status.</span>
+            <span class="kw">const</span> tarefas_do_status = tarefas.<span class="fn">filter</span>(<span class="kw">function</span> (tarefa) {
+                <span class="kw">return</span> tarefa.status === status.nome;
+            });
+
+            <span class="cm">// Monta os cartões de tarefa dessa coluna.</span>
+            <span class="kw">let</span> cartoes = <span class="st">""</span>;
+            tarefas_do_status.<span class="fn">forEach</span>(<span class="kw">function</span> (tarefa) {
+                cartoes += `
+                    &lt;div class="card-tarefa"&gt;
+                        &lt;p&gt;${tarefa.titulo}&lt;/p&gt;
+                        &lt;p class="text-muted small mb-0"&gt;${tarefa.descricao || <span class="st">"-"</span>}&lt;/p&gt;
+                    &lt;/div&gt;
+                `;
+            });
+
+            <span class="cm">// Adiciona a coluna ao quadro.</span>
+            quadro.innerHTML += `
+                &lt;div class="coluna-kanban"&gt;
+                    &lt;h6&gt;${status.nome} &lt;span class="badge bg-secondary"&gt;${tarefas_do_status.length}&lt;/span&gt;&lt;/h6&gt;
+                    ${cartoes || '&lt;p class="text-muted small"&gt;Nenhuma tarefa&lt;/p&gt;'}
+                &lt;/div&gt;
+            `;
+
+        });
+
+    } <span class="kw">catch</span> {
+        console.<span class="fn">error</span>(<span class="st">"Não foi possível carregar o quadro Kanban..."</span>);
+    }
+
+}</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que duas requisições separadas?</strong>
+      A primeira requisição busca os status de tarefas cadastrados, e a segunda busca todas as tarefas. Elas precisam ser combinadas no JavaScript porque o quadro Kanban depende dos dois conjuntos de dados ao mesmo tempo, uma coluna para cada status, e os cartões de tarefa dentro da coluna certa.
+    </div>
+
+    <h3>Passo 3 - Compreender a montagem do quadro Kanban</h3>
+    <ul class="bullets">
+      <li><strong>status_tarefas.forEach()</strong> gera uma coluna para cada status de tarefa cadastrado. Se você criar um novo status na tela de Status de Tarefas, ele aparece automaticamente no quadro, sem precisar tocar no código-fonte.</li>
+      <li><strong>tarefas.filter()</strong> filtra as tarefas pelo nome do status (<code>tarefa.status === status.nome</code>), comparando com o campo que já vem pronto da rota de <code>listar_tarefas()</code>, graças ao <code>JOIN</code> que fizemos na etapa 5.</li>
+      <li><strong>class="card-tarefa"</strong> reaproveita a classe de estilo já definida no <code>styles.css</code> do projeto (fundo branco, borda arredondada, sombra leve) que será criado no passo a seguir, em vez de usar classes genéricas do Bootstrap.</li>
+      <li>Se um status não tiver nenhuma tarefa vinculada, a coluna exibe a mensagem de <code>Nenhuma tarefa</code> em vez de ficar vazia, graças ao operador <code>||</code> usado em <code>cartoes || '...'</code>.</li>
+    </ul>
+
+    <h3>Passo 4 - Crie o arquivo de estilos do projeto</h3>
+    <p>Na pasta de arquivos estáticos (<code>static/</code>), crie uma nova pasta chamada de <code>css/</code>. Dentro dela, crie um arquivo chamado de <code>styles.css</code> com o conteúdo completo abaixo:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">css — styles.css<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre><span class="cm">/* Definições raiz */</span>
+<span class="kw">:root</span> {
+  <span class="fn">--cor-primaria</span>: <span class="num">#3b5bdb</span>;
+  <span class="fn">--cor-primaria-escura</span>: <span class="num">#2f4ac2</span>;
+  <span class="fn">--cor-sidebar</span>: <span class="num">#0f1b3d</span>;
+  <span class="fn">--fonte</span>: Verdana, Geneva, sans-serif;
+}
+
+<span class="cm">/* Fonte global */</span>
+<span class="kw">body</span> {
+  <span class="fn">font-family</span>: <span class="kw">var</span>(<span class="fn">--fonte</span>);
+}
+
+<span class="cm">/* Botões */</span>
+<span class="kw">.btn-primary</span> {
+  <span class="fn">background-color</span>: <span class="kw">var</span>(<span class="fn">--cor-primaria</span>);
+  <span class="fn">border-color</span>: <span class="kw">var</span>(<span class="fn">--cor-primaria</span>);
+}
+
+<span class="kw">.btn-primary:hover</span> {
+  <span class="fn">background-color</span>: <span class="kw">var</span>(<span class="fn">--cor-primaria-escura</span>);
+  <span class="fn">border-color</span>: <span class="kw">var</span>(<span class="fn">--cor-primaria-escura</span>);
+}
+
+<span class="cm">/* Cartão de login */</span>
+<span class="kw">.card-login</span> {
+  <span class="fn">width</span>: <span class="num">100%</span>;
+  <span class="fn">max-width</span>: <span class="num">400px</span>;
+}
+
+<span class="cm">/* Logotipo no login */</span>
+<span class="kw">.logo-login</span> {
+  <span class="fn">width</span>: <span class="num">280px</span>;
+}
+
+<span class="cm">/* Sidebar */</span>
+<span class="kw">.sidebar</span> {
+  <span class="fn">width</span>: <span class="num">220px</span>;
+  <span class="fn">min-height</span>: <span class="num">100vh</span>;
+  <span class="fn">background-color</span>: <span class="kw">var</span>(<span class="fn">--cor-sidebar</span>);
+  <span class="fn">position</span>: <span class="num">fixed</span>;
+  <span class="fn">top</span>: <span class="num">0</span>;
+  <span class="fn">left</span>: <span class="num">0</span>;
+}
+
+<span class="kw">.sidebar-logo</span> {
+  <span class="fn">display</span>: <span class="num">flex</span>;
+  <span class="fn">flex-direction</span>: <span class="num">column</span>;
+  <span class="fn">align-items</span>: <span class="num">center</span>;
+  <span class="fn">gap</span>: <span class="num">6px</span>;
+  <span class="fn">margin-bottom</span>: <span class="num">8px</span>;
+}
+
+<span class="kw">.logo-sidebar</span> {
+  <span class="fn">width</span>: <span class="num">180px</span>;
+}
+
+<span class="kw">.sidebar .nav-link</span> {
+  <span class="fn">color</span>: <span class="num">rgba</span>(<span class="num">255</span>, <span class="num">255</span>, <span class="num">255</span>, <span class="num">0.8</span>);
+}
+
+<span class="kw">.sidebar .nav-link:hover,
+.sidebar .nav-link.active</span> {
+  <span class="fn">color</span>: <span class="num">#ffffff</span>;
+  <span class="fn">background-color</span>: <span class="kw">var</span>(<span class="fn">--cor-primaria</span>);
+  <span class="fn">border-radius</span>: <span class="num">6px</span>;
+}
+
+<span class="cm">/* Conteúdo principal */</span>
+<span class="kw">.conteudo</span> {
+  <span class="fn">margin-left</span>: <span class="num">220px</span>;
+  <span class="fn">padding</span>: <span class="num">32px</span>;
+}
+
+<span class="cm">/* Quadro de Kanban */</span>
+<span class="kw">.quadro-kanban</span> {
+  <span class="fn">display</span>: <span class="num">flex</span>;
+  <span class="fn">gap</span>: <span class="num">16px</span>;
+  <span class="fn">overflow-x</span>: <span class="num">auto</span>;
+  <span class="fn">padding-bottom</span>: <span class="num">16px</span>;
+}
+
+<span class="kw">.coluna-kanban</span> {
+  <span class="fn">min-width</span>: <span class="num">250px</span>;
+  <span class="fn">max-width</span>: <span class="num">250px</span>;
+  <span class="fn">background-color</span>: <span class="num">#f1f3f5</span>;
+  <span class="fn">border-radius</span>: <span class="num">8px</span>;
+  <span class="fn">padding</span>: <span class="num">16px</span>;
+  <span class="fn">flex-shrink</span>: <span class="num">0</span>;
+}
+
+<span class="kw">.coluna-kanban h6</span> {
+  <span class="fn">font-weight</span>: <span class="num">600</span>;
+  <span class="fn">margin-bottom</span>: <span class="num">12px</span>;
+  <span class="fn">color</span>: <span class="kw">var</span>(<span class="fn">--cor-sidebar</span>);
+}
+
+<span class="cm">/* Cards de tarefa */</span>
+<span class="kw">.card-tarefa</span> {
+  <span class="fn">background-color</span>: <span class="num">#ffffff</span>;
+  <span class="fn">border-radius</span>: <span class="num">6px</span>;
+  <span class="fn">padding</span>: <span class="num">12px</span>;
+  <span class="fn">margin-bottom</span>: <span class="num">10px</span>;
+  <span class="fn">box-shadow</span>: <span class="num">0 1px 3px rgba</span>(<span class="num">0</span>, <span class="num">0</span>, <span class="num">0</span>, <span class="num">0.1</span>);
+}
+
+<span class="kw">.card-tarefa p</span> {
+  <span class="fn">margin-bottom</span>: <span class="num">8px</span>;
+  <span class="fn">font-size</span>: <span class="num">0.9rem</span>;
+  <span class="fn">font-weight</span>: <span class="num">500</span>;
+}
+
+<span class="kw">.card-tarefa .acoes</span> {
+  <span class="fn">display</span>: <span class="num">flex</span>;
+  <span class="fn">gap</span>: <span class="num">6px</span>;
+}</pre>
+    </div>
+
+    <div class="callout note">
+      <strong>Por que só agora criamos esse arquivo?</strong>
+      Desde a etapa 2, o <code>index.html</code> e o <code>dashboard.html</code> já apontavam para <code>../static/css/styles.css</code> através da tag <code>&lt;link&gt;</code>, mas o navegador da web simplesmente ignorava esse link, já que o arquivo não existia. As classes de <code>.quadro-kanban</code>, <code>.coluna-kanban</code> e <code>.card-tarefa</code> são justamente as que tornam o quadro Kanban desta etapa visualmente organizado em colunas.
+    </div>
+
+    <h3>Passo 5 - Baixe as imagens de logotipo do projeto</h3>
+    <p>Na pasta <code>static/</code>, crie uma nova pasta chamada de <code>images/</code>. Clique nos dois botões abaixo para baixar os logotipos oficiais do Taskan, e salve-os dentro dessa pasta com exatamente os nomes sugeridos pelo navegador da web:</p>
+
+    <div class="callout note" style="text-align:center; display:flex; flex-direction:column; gap:12px; align-items:center;">
+      <a download="Logotipo - Taskan.png" href="data:image/jpeg;base64,LOGO_PRINCIPAL_BASE64_AQUI" style="display:inline-block; background:var(--accent); color:#1a1a1a; font-weight:600; padding:10px 18px; border-radius:8px; text-decoration:none; font-size:13.5px;">⬇ Baixar o Logotipo - Taskan.png</a>
+      <a download="Logotipo do Sidebar - Taskan.png" href="data:image/jpeg;base64,LOGO_SIDEBAR_BASE64_AQUI" style="display:inline-block; background:var(--accent); color:#1a1a1a; font-weight:600; padding:10px 18px; border-radius:8px; text-decoration:none; font-size:13.5px;">⬇ Baixar o Logotipo do Sidebar - Taskan.png</a>
+    </div>
+
+    <div class="callout warn">
+      <strong>Atenção ao nome do arquivo salvo</strong>
+      O navegador da web pode sugerir salvar o arquivo com a extensão <code>.png</code>, mesmo que o conteúdo interno seja um JPEG, isso não é um problema, pois o <code>&lt;img&gt;</code> do HTML reconhece a imagem normalmente pelo seu conteúdo, não pela extensão do nome. O importante é manter o nome do arquivo (incluindo espaços e hífen) exatamente como sugerido pelo botão de download, para bater com os caminhos já usados nas tags de <code>&lt;img&gt;</code> desde a etapa 2.
+    </div>
+
+    <h3>Passo 6 - Estrutura atual de pastas do projeto</h3>
+    <p>Até este ponto, sua pasta de projeto deve estar organizada assim:</p>
+
+    <div class="code-block">
+      <div class="lang-tag">estrutura de pastas<button class="copy-btn" onclick="copiar(this)">Copiar</button></div>
+      <pre>Kanban com SQL Puro/
+│
+├── app.py
+├── database.py
+├── .env
+│
+├── static/
+│   ├── css/
+│   │   └── styles.css
+│   ├── images/
+│   │   ├── Logotipo - Taskan.png
+│   │   └── Logotipo do Sidebar - Taskan.png
+│   └── js/
+│       ├── utilidades.js
+│       ├── index.js
+│       ├── dashboard.js
+│       ├── usuarios.js
+│       ├── status_tarefa.js
+│       └── tarefas.js
+│
+└── templates/
+    ├── index.html
+    ├── dashboard.html
+    ├── usuarios.html
+    ├── status_tarefa.html
+    └── tarefas.html</pre>
+    </div>
+
+    <h3>Passo 7 - Teste o quadro Kanban</h3>
+    <p>Execute o arquivo de backend (<code>python app.py</code>), faça login e acesse o <code>dashboard.html</code>. Cadastre algumas tarefas em status diferentes, na tela de <code>tarefas.html</code>, e volte para o painel de gerenciamento.</p>
+
+    <div class="callout tip">
+      <strong>Esperado nesta etapa</strong>
+      O cartão de <code>Total de Tarefas</code> deve exibir a contagem real de tarefas cadastradas, e o quadro Kanban deve mostrar uma coluna para cada status, com os cartões de tarefa distribuídos corretamente entre elas. As telas de login e o menu lateral devem exibir seus respectivos logotipos, em vez de ícones quebrados. Se você cadastrar um novo status de tarefa, ele deve aparecer como uma nova coluna automaticamente, sem precisar editar nenhum código.
+    </div>
+
+    <div class="footer-nav"></div>
+
+  </section>
+
+</main>
+
+<script>
+function toggleMenu() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('show');
+}
+
+function copiar(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  navigator.clipboard.writeText(pre.innerText).then(function () {
+    btn.textContent = 'Copiado!';
+    btn.classList.add('copied');
+    setTimeout(function () {
+      btn.textContent = 'Copiar';
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+}
+</script>
+
+</body>
+</html>
